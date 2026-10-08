@@ -1,0 +1,136 @@
+[project]
+name = "clauserag"
+version = "0.1.0"
+description = "Agentic RAG platform backend: API, worker and agent runtime processes."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aio-pika>=10.1,<11",
+    "alembic>=1.20,<2",
+    "asyncpg>=0.31,<1",
+    # botocore is deliberately not declared: boto3 pins it with ``==``, so a range here could only
+    # ever contradict boto3's own pin. ``botocore.config`` and ``botocore.exceptions`` are imported
+    # directly, which is what boto3's own documentation does.
+    "boto3>=1.43,<2",
+    "fastapi>=0.142,<1",
+    "firecrawl-anydoc>=0.2.4,<0.3",
+    "html-to-markdown>=3.15,<4",
+    "httpx>=0.28,<1",
+    # LangGraph's config type is langchain-core's ``RunnableConfig``, which the agent runner names in
+    # its signatures. It arrives through langgraph, but the source imports it directly.
+    "langchain-core>=1.6,<2",
+    "langfuse>=4.16,<5",
+    "langgraph>=1.2,<2",
+    "langgraph-checkpoint-postgres>=3.1,<4",
+    # ``pool`` is the extra that brings ``psycopg-pool``: the checkpointer opens an
+    # ``AsyncConnectionPool``, and langgraph-checkpoint-postgres declares only bare ``psycopg``.
+    "psycopg[binary,pool]>=3.3,<4",
+    "pydantic>=2.13,<3",
+    "pydantic-settings>=2.15,<3",
+    "python-multipart>=0.0.32,<1",
+    "qdrant-client>=1.19,<2",
+    "sqlalchemy[asyncio]>=2.1,<3",
+    "structlog>=26.1,<27",
+    "taskiq>=0.13,<1",
+    "taskiq-aio-pika>=0.6,<1",
+    "tiktoken>=0.14,<1",
+    "uvicorn[standard]>=0.54,<1",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1",
+    "ruff>=0.15",
+]
+# The evaluation stack is not a service dependency: no API, worker or agent process imports it, and
+# `uv sync --locked` for a deployment must not pull a judge library in. RAGAS is pinned exactly
+# because metric scores are only comparable within one RAGAS version.
+# ``openai`` is declared rather than inherited through ragas: the judge and embedding factories take
+# an ``AsyncOpenAI`` client that this codebase constructs itself.
+# ``langchain-community`` is capped because ragas 0.4.3 (its latest release) does
+# `from langchain_community.chat_models.vertexai import ChatVertexAI` at import time, and
+# langchain-community 0.4.0 removed that module when the package was sunset — so `import ragas`
+# fails outright against the version uv would otherwise resolve. 0.3.31 is the last release that
+# ships it and still allows langchain-core 2.x, which is what the rest of this project pins.
+# ponytail: drop this cap once ragas stops importing vertexai (tracked with the eval integration).
+eval = [
+    "langchain-community>=0.3.31,<0.4",
+    "openai>=1,<2",
+    "ragas==0.4.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# `backend/src` is the source root: every directory under it is a top-level package, and `sources`
+# strips that prefix so the wheel carries `api/`, `domain/`, ... at its root.
+only-include = ["backend/src"]
+sources = ["backend/src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["backend/src"]
+extend-exclude = [".probe", ".venv"]
+
+[tool.ruff.lint]
+# SQLAlchemy resolves a mapped class's ``Mapped[...]`` annotation when the class is created, so a
+# name a mapped annotation uses must be imported at runtime: moving it into a ``TYPE_CHECKING``
+# block would make the mapping fail at import time.
+# FastAPI and Pydantic resolve the annotations of the ``api`` package's endpoints and models at
+# runtime too — a dependency alias reaches the route through ``get_type_hints``, and a model's field
+# types are resolved when the model is built. Moving any of them into a ``TYPE_CHECKING`` block does
+# not fail at import; it silently turns the dependency into a query parameter (answered 422) and
+# leaves the model unresolved. Every import in that package is therefore a runtime import.
+per-file-ignores = { "backend/src/infrastructure/db/models/*.py" = [
+    "TC003",
+], "backend/src/api/*.py" = [
+    "TC001",
+    "TC002",
+    "TC003",
+] }
+select = [
+    "A",
+    "ASYNC",
+    "B",
+    "C4",
+    "E",
+    "F",
+    "G",
+    "I",
+    "LOG",
+    "N",
+    "PTH",
+    "RET",
+    "RUF",
+    "SIM",
+    "TC",
+    "TID",
+    "UP",
+    "W",
+]
+# The corpus this platform answers from is Chinese, so its prompts, its abstention text and its
+# log messages use fullwidth punctuation deliberately: a prompt written with ASCII commas would be a
+# different prompt, and the model mirrors the style of what it is given. These characters are
+# therefore allowed rather than reported as confusables.
+allowed-confusables = ["，", "：", "；", "？", "！", "（", "）"]
+
+[tool.pyright]
+include = ["backend/src"]
+exclude = [".probe", ".venv", "**/__pycache__"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+# `backend/src` is the source root, so the packages under it count as first-party code instead of a
+# third-party distribution from the lockfile. `extraPaths` repeats that mapping for the repo-level
+# tooling under `scripts/`, which imports the same packages (the goldenset validator reads the
+# metric contract) and would otherwise see them as untyped third-party imports.
+executionEnvironments = [{ root = "backend/src" }]
+extraPaths = ["backend/src"]
+
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

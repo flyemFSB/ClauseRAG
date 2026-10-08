@@ -1,0 +1,355 @@
+# ClauseRAG 后端本地基础设施编排拓扑
+#
+# 基础服务镜像（PostgreSQL、Qdrant、Redis、RabbitMQ、RustFS）默认使用本地已有镜像。
+# Langfuse 可观测性技术栈（含 ClickHouse、Web 与 Worker）复用本拓扑的 PostgreSQL、
+# Redis（库 1）与 RustFS，并添加 ClickHouse（详见 ADR-0014）。
+#
+# 凭据从环境变量读取，并具备安全的本地默认值：
+#   docker compose -f infra/compose.yaml up -d --wait
+#   docker compose --env-file .env -f infra/compose.yaml up -d --wait
+#
+# 默认配置与 `backend/src/infrastructure/config/settings.py` 严格保持一致。
+name: clauserag
+
+# 应用进程的共享环境（profile: app）。
+#
+# 容器里连的是服务名而不是 127.0.0.1，而且必须监听 0.0.0.0：settings 的默认 host 是 127.0.0.1，
+# 那是宿主开发用的值，在容器里等于拒绝一切跨容器连接。密钥（模型、OCR、Langfuse）来自仓库根的
+# .env（由各服务的 env_file 注入）；S3 凭据与拓扑里的 RustFS 默认值保持一致。
+x-app-environment: &app-environment
+  API_HOST: 0.0.0.0
+  AGENT_RUNTIME_HOST: 0.0.0.0
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag_local}@postgres:5432/${POSTGRES_DB:-rag}
+  RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-rag}:${RABBITMQ_DEFAULT_PASS:-rag_local}@rabbitmq:5672//
+  QDRANT_URL: http://qdrant:6333
+  S3_ENDPOINT_URL: http://rustfs:9000
+  S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-ragadmin}
+  S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rag_local_secret}
+  LANGFUSE_HOST: http://langfuse-web:3000
+
+services:
+  postgres:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-postgres
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag_local}
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # postgres:18 uses PGDATA=/var/lib/postgresql/18/docker, so the image volume root is
+      # /var/lib/postgresql (not /var/lib/postgresql/data as in earlier major versions).
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  qdrant:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-qdrant
+    image: qdrant/qdrant:v1.19.1
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      # The image ships neither curl nor wget; bash is present, so probe the HTTP port directly.
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-redis
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-rag_local}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-rag_local}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  rabbitmq:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-rabbitmq
+    image: rabbitmq:4.3.6-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-rag}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-rag_local}
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  rustfs:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-rustfs
+    image: rustfs/rustfs:1.0.0
+    restart: unless-stopped
+    environment:
+      # RustFS falls back to the publicly known rustfsadmin/rustfsadmin when these are unset.
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-ragadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rag_local_secret}
+    ports:
+      - "${RUSTFS_S3_PORT:-9000}:9000"
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # --- Langfuse 可观测性技术栈 (ADR-0014) --------------------------------------------------------
+  #
+  # 自建 Langfuse v4 保持存储隔离：独立的 PostgreSQL 数据库（langfuse）、独立的 Redis DB（库 1）、
+  # 独立的对象存储桶（rag-langfuse，由 `python -m cli observability-init` 创建）与独立的 ClickHouse 数据库。
+  # 业务应用仅通过 `langfuse` SDK 与其通信，不直接读写其底层表结构。
+  clickhouse:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-clickhouse
+    image: clickhouse/clickhouse-server:26.4
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-langfuse}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-langfuse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_local}
+    volumes:
+      # A single ClickHouse node is officially a development-only configuration (ADR-0014).
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  langfuse-web:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-langfuse-web
+    image: langfuse/langfuse:4
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    environment: &langfuse-environment
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag_local}@postgres:5432/${LANGFUSE_DB:-langfuse}
+      NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-rag_local_langfuse_nextauth_secret}
+      SALT: ${LANGFUSE_SALT:-rag_local_langfuse_salt}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-langfuse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_local}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-langfuse}
+      # The deployment is one ClickHouse node with no Keeper, so the migrations must not run their
+      # clustered DDL: `CLICKHOUSE_CLUSTER_ENABLED` defaults to `true`, which makes Langfuse issue
+      # `ON CLUSTER` and Replicated engines, and ClickHouse refuses them here with `code: 139,
+      # There is no Zookeeper configuration in server config` (the documented single-container value
+      # is `false`: https://langfuse.com/self-hosting/deployment/infrastructure/clickhouse#docker).
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      REDIS_CONNECTION_STRING: redis://:${REDIS_PASSWORD:-rag_local}@redis:6379/1
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_BUCKET:-rag-langfuse}
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://rustfs:9000
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${S3_REGION:-us-east-1}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-ragadmin}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rag_local_secret}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-clauserag}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-RAG Platform}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-clauserag}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-RAG Platform}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-rag-local}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-rag-local}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-operator@example.com}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Operator}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-rag_local_langfuse}
+      TELEMETRY_ENABLED: "false"
+    ports:
+      - "${LANGFUSE_PORT:-3000}:3000"
+
+  langfuse-worker:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-langfuse-worker
+    image: langfuse/langfuse-worker:4
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_started
+    environment:
+      <<: *langfuse-environment
+      PORT: "3030"
+
+  # ---------------------------------------------------------------- 应用进程（profile: app）
+  #
+  # 四个服务共用一个后端镜像与一个前端镜像（ADR-0020 的两个 HTTP 进程 + 队列 worker + SPA），
+  # 靠 command 区分；不带 profile 时只起基础设施，所以宿主开发循环（scripts/dev.ps1）不受影响：
+  #
+  #   docker compose -f infra/compose.yaml --profile app up -d --build --wait
+  #
+  # 只发布前端一个入口（WEB_PORT）；两个后端进程只在拓扑内部可达。
+
+  # 一次性迁移：API/agent/worker 都等它跑完再启动，因此没有人靠人工记得敲 alembic upgrade head。
+  migrate:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-migrate
+    profiles: ["app"]
+    build: &app-build
+      context: ..
+      dockerfile: backend/Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    env_file: ../.env
+    environment:
+      <<: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-api
+    profiles: ["app"]
+    build: *app-build
+    command: ["python", "-m", "api.main"]
+    env_file: ../.env
+    environment:
+      <<: *app-environment
+      API_PORT: "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  agent:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-agent
+    profiles: ["app"]
+    build: *app-build
+    command: ["python", "-m", "agent_runtime.main"]
+    env_file: ../.env
+    environment:
+      <<: *app-environment
+      AGENT_RUNTIME_PORT: "8001"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/live', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-worker
+    profiles: ["app"]
+    build: *app-build
+    command: ["python", "-m", "worker.main"]
+    env_file: ../.env
+    environment:
+      <<: *app-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    container_name: clauserag-web
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  qdrant-data:
+  redis-data:
+  rabbitmq-data:
+  rustfs-data:
+  clickhouse-data:
+  clickhouse-logs:

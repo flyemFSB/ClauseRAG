@@ -1,0 +1,49 @@
+{
+  "name": "clauserag-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": {
+    "catalog": {
+      "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
+      "vite-plus": "1.0.0"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "check": "vp check",
+    "test": "vp test",
+    "preview": "vp preview"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.8.0",
+    "@tanstack/react-query": "^5.104.0",
+    "@tanstack/react-router": "^1.170.41",
+    "framer-motion": "^14.0.0",
+    "lucide-react": "^1.51.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.19.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "overrides": {
+    "vite@*": "catalog:",
+    "vitest@*": "5.0.1"
+  },
+  "engines": {
+    "node": "^24.11.0"
+  },
+  "packageManager": "pnpm@12.8.1"
+}

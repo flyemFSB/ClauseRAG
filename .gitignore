@@ -1,0 +1,36 @@
+.env
+.env.*
+!.env.example
+
+# local probe workspaces (throwaway venvs / probe data)
+.probe/
+
+# agent session state (pi goals / budgets / impeccable reviews)
+.pi/
+.impeccable/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+.pyright/
+
+# node / frontend
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.vite/
+
+# os / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# downloaded evaluation corpora (raw artifacts, regenerate via datasets/*/MANIFEST.json)
+datasets/
+

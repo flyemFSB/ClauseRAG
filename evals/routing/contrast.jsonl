@@ -1,0 +1,14 @@
+{"id": "route-0001", "intent": "direct_response", "question": "你好，你能帮我做什么？", "context": "empty_session", "note": "问候加能力询问，答案来自平台自身的说明，不需要检索任何合同内容。"}
+{"id": "route-0002", "intent": "direct_response", "question": "这个平台支持上传哪些格式的合同文件？", "context": "empty_session", "note": "系统功能问题，检索合同语料对回答没有帮助。"}
+{"id": "route-0003", "intent": "direct_response", "question": "引用里的行号是怎么算出来的？", "context": "empty_session", "note": "询问平台的引用协议本身，属于系统机制说明而非合同内容。"}
+{"id": "route-0004", "intent": "direct_response", "question": "我上传的合同会保存在哪里？", "context": "empty_session", "note": "平台存储行为问题，不涉及合同条款。"}
+{"id": "route-0005", "intent": "direct_response", "question": "谢谢，先到这里。", "context": "empty_session", "note": "收尾寒暄，没有任何检索需求。"}
+{"id": "route-0006", "intent": "direct_response", "question": "What file formats can I upload?", "context": "empty_session", "note": "与 route-0002 同义的英文表述，用于检查语言不影响路由。"}
+{"id": "route-0007", "intent": "ask_clarification", "question": "帮我看看这份合同有没有问题。", "context": "empty_session", "note": "「这份」在空会话下无指代，且未给出审查范围，无法确定要检索哪份合同。"}
+{"id": "route-0008", "intent": "ask_clarification", "question": "这个条款风险大吗？", "context": "empty_session", "note": "「这个条款」无指代，无法确定条款类别。"}
+{"id": "route-0009", "intent": "ask_clarification", "question": "帮我审一下。", "context": "empty_session", "note": "既无合同也无审查范围，纯指代缺失。"}
+{"id": "route-0010", "intent": "ask_clarification", "question": "那违约责任呢？", "context": "empty_session", "note": "依赖上文的追问，空会话下没有可继承的合同或条款锚点。"}
+{"id": "route-0011", "intent": "ask_clarification", "question": "帮我对比一下两份合同。", "context": "empty_session", "note": "未指明是哪两份合同，检索范围无法确定。"}
+{"id": "route-0012", "intent": "ask_clarification", "question": "合同里有提到吗？", "context": "empty_session", "note": "既未指定合同，也未说明要找的内容。"}
+{"id": "route-0013", "intent": "ask_clarification", "question": "Is this clause acceptable?", "context": "empty_session", "note": "英文的同类缺失：无合同、无条款指代。"}
+{"id": "route-0014", "intent": "ask_clarification", "question": "帮我看看有没有对我不利的条款。", "context": "empty_session", "note": "给出了审查意图但未指明合同，「我」也不是可解析的当事方。"}

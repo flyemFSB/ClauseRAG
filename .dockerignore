@@ -1,0 +1,34 @@
+# Build context for both application images (`backend/Dockerfile`, `frontend/Dockerfile`).
+#
+# The backend image needs the project definition, the lockfile, the source and the migrations; the
+# frontend image needs `frontend/`. Everything else is excluded, and two exclusions are load-bearing:
+#
+#   * `.env` — a deployment's credentials reach the container through `env_file` at run time. Baking
+#     them into an image would put real API keys in every layer, every registry copy and every
+#     `docker save`.
+#   * `.venv`, `node_modules`, `datasets`, `dist` — the working tree, not the artifact. Sending them
+#     would make the context gigabytes wide and the build minutes long.
+
+.git
+.gitattributes
+.gitignore
+.github
+.venv
+.ruff_cache
+.pytest_cache
+.pyright
+.probe
+.pi
+.impeccable
+.agents
+datasets
+dist
+docs
+evals
+node_modules
+**/node_modules
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+!.env.example

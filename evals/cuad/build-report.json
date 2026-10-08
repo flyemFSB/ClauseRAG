@@ -1,0 +1,719 @@
+{
+  "generated_by": "scripts/build-goldenset.py",
+  "goldenset": "CUAD v1 stratified sample",
+  "seed": 20261006,
+  "source": {
+    "path": "datasets/cuad/CUAD_v1/CUAD_v1.json",
+    "sha256": "ed0b77d85bdf4014d7495800e8e4a70565b48ee6f8a2e5dca9cf8655dbf10eae",
+    "size_bytes": 40128638,
+    "manifest_sha256": "ed0b77d85bdf4014d7495800e8e4a70565b48ee6f8a2e5dca9cf8655dbf10eae",
+    "contracts": 510,
+    "question_slots": 20910,
+    "categories": 41
+  },
+  "sampling": {
+    "per_category": 10,
+    "empty_evidence_per_category": 5,
+    "order": "empty-evidence pool first, then evidence pool, each sorted by document_key and drawn with random.Random(seed)",
+    "id_assignment": "(category order, document_key) order numbered cuad-000001.."
+  },
+  "totals": {
+    "samples": 410,
+    "with_evidence": 214,
+    "empty_evidence": 196,
+    "document_keys": 99,
+    "categories": 41
+  },
+  "corpus": {
+    "path": "evals/cuad/corpus.json",
+    "state": "generated",
+    "sha256": "ee0f47d336dbc592a962fe29c6f93dc4b141699110b259b6dd80f5bb785face4",
+    "contracts": 100,
+    "requested": 100,
+    "seed": 20261006,
+    "question_slots": 4100
+  },
+  "categories": [
+    {
+      "name": "Document Name",
+      "corpus": {
+        "with_evidence": 100,
+        "empty_evidence": 0
+      },
+      "source": {
+        "with_evidence": 510,
+        "empty_evidence": 0
+      },
+      "sampled": {
+        "with_evidence": 10,
+        "empty_evidence": 0
+      },
+      "deviation": "the corpus holds 0 empty-evidence slots of 5; filled the remaining quota from with_evidence"
+    },
+    {
+      "name": "Parties",
+      "corpus": {
+        "with_evidence": 99,
+        "empty_evidence": 1
+      },
+      "source": {
+        "with_evidence": 509,
+        "empty_evidence": 1
+      },
+      "sampled": {
+        "with_evidence": 9,
+        "empty_evidence": 1
+      },
+      "deviation": "the corpus holds 1 empty-evidence slots of 5; filled the remaining quota from with_evidence"
+    },
+    {
+      "name": "Agreement Date",
+      "corpus": {
+        "with_evidence": 88,
+        "empty_evidence": 12
+      },
+      "source": {
+        "with_evidence": 470,
+        "empty_evidence": 40
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Effective Date",
+      "corpus": {
+        "with_evidence": 83,
+        "empty_evidence": 17
+      },
+      "source": {
+        "with_evidence": 390,
+        "empty_evidence": 120
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Expiration Date",
+      "corpus": {
+        "with_evidence": 78,
+        "empty_evidence": 22
+      },
+      "source": {
+        "with_evidence": 413,
+        "empty_evidence": 97
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Renewal Term",
+      "corpus": {
+        "with_evidence": 48,
+        "empty_evidence": 52
+      },
+      "source": {
+        "with_evidence": 176,
+        "empty_evidence": 334
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Notice Period To Terminate Renewal",
+      "corpus": {
+        "with_evidence": 31,
+        "empty_evidence": 69
+      },
+      "source": {
+        "with_evidence": 111,
+        "empty_evidence": 399
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Governing Law",
+      "corpus": {
+        "with_evidence": 87,
+        "empty_evidence": 13
+      },
+      "source": {
+        "with_evidence": 437,
+        "empty_evidence": 73
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Most Favored Nation",
+      "corpus": {
+        "with_evidence": 10,
+        "empty_evidence": 90
+      },
+      "source": {
+        "with_evidence": 28,
+        "empty_evidence": 482
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Non-Compete",
+      "corpus": {
+        "with_evidence": 31,
+        "empty_evidence": 69
+      },
+      "source": {
+        "with_evidence": 119,
+        "empty_evidence": 391
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Exclusivity",
+      "corpus": {
+        "with_evidence": 39,
+        "empty_evidence": 61
+      },
+      "source": {
+        "with_evidence": 180,
+        "empty_evidence": 330
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "No-Solicit Of Customers",
+      "corpus": {
+        "with_evidence": 12,
+        "empty_evidence": 88
+      },
+      "source": {
+        "with_evidence": 34,
+        "empty_evidence": 476
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Competitive Restriction Exception",
+      "corpus": {
+        "with_evidence": 25,
+        "empty_evidence": 75
+      },
+      "source": {
+        "with_evidence": 76,
+        "empty_evidence": 434
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "No-Solicit Of Employees",
+      "corpus": {
+        "with_evidence": 15,
+        "empty_evidence": 85
+      },
+      "source": {
+        "with_evidence": 59,
+        "empty_evidence": 451
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Non-Disparagement",
+      "corpus": {
+        "with_evidence": 10,
+        "empty_evidence": 90
+      },
+      "source": {
+        "with_evidence": 38,
+        "empty_evidence": 472
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Termination For Convenience",
+      "corpus": {
+        "with_evidence": 41,
+        "empty_evidence": 59
+      },
+      "source": {
+        "with_evidence": 183,
+        "empty_evidence": 327
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Rofr/Rofo/Rofn",
+      "corpus": {
+        "with_evidence": 26,
+        "empty_evidence": 74
+      },
+      "source": {
+        "with_evidence": 85,
+        "empty_evidence": 425
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Change Of Control",
+      "corpus": {
+        "with_evidence": 30,
+        "empty_evidence": 70
+      },
+      "source": {
+        "with_evidence": 121,
+        "empty_evidence": 389
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Anti-Assignment",
+      "corpus": {
+        "with_evidence": 80,
+        "empty_evidence": 20
+      },
+      "source": {
+        "with_evidence": 374,
+        "empty_evidence": 136
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Revenue/Profit Sharing",
+      "corpus": {
+        "with_evidence": 38,
+        "empty_evidence": 62
+      },
+      "source": {
+        "with_evidence": 166,
+        "empty_evidence": 344
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Price Restrictions",
+      "corpus": {
+        "with_evidence": 10,
+        "empty_evidence": 90
+      },
+      "source": {
+        "with_evidence": 15,
+        "empty_evidence": 495
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Minimum Commitment",
+      "corpus": {
+        "with_evidence": 45,
+        "empty_evidence": 55
+      },
+      "source": {
+        "with_evidence": 165,
+        "empty_evidence": 345
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Volume Restriction",
+      "corpus": {
+        "with_evidence": 23,
+        "empty_evidence": 77
+      },
+      "source": {
+        "with_evidence": 82,
+        "empty_evidence": 428
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Ip Ownership Assignment",
+      "corpus": {
+        "with_evidence": 30,
+        "empty_evidence": 70
+      },
+      "source": {
+        "with_evidence": 124,
+        "empty_evidence": 386
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Joint Ip Ownership",
+      "corpus": {
+        "with_evidence": 18,
+        "empty_evidence": 82
+      },
+      "source": {
+        "with_evidence": 46,
+        "empty_evidence": 464
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "License Grant",
+      "corpus": {
+        "with_evidence": 60,
+        "empty_evidence": 40
+      },
+      "source": {
+        "with_evidence": 255,
+        "empty_evidence": 255
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Non-Transferable License",
+      "corpus": {
+        "with_evidence": 36,
+        "empty_evidence": 64
+      },
+      "source": {
+        "with_evidence": 138,
+        "empty_evidence": 372
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Affiliate License-Licensor",
+      "corpus": {
+        "with_evidence": 14,
+        "empty_evidence": 86
+      },
+      "source": {
+        "with_evidence": 23,
+        "empty_evidence": 487
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Affiliate License-Licensee",
+      "corpus": {
+        "with_evidence": 25,
+        "empty_evidence": 75
+      },
+      "source": {
+        "with_evidence": 59,
+        "empty_evidence": 451
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Unlimited/All-You-Can-Eat-License",
+      "corpus": {
+        "with_evidence": 11,
+        "empty_evidence": 89
+      },
+      "source": {
+        "with_evidence": 17,
+        "empty_evidence": 493
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Irrevocable Or Perpetual License",
+      "corpus": {
+        "with_evidence": 24,
+        "empty_evidence": 76
+      },
+      "source": {
+        "with_evidence": 70,
+        "empty_evidence": 440
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Source Code Escrow",
+      "corpus": {
+        "with_evidence": 10,
+        "empty_evidence": 90
+      },
+      "source": {
+        "with_evidence": 13,
+        "empty_evidence": 497
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Post-Termination Services",
+      "corpus": {
+        "with_evidence": 48,
+        "empty_evidence": 52
+      },
+      "source": {
+        "with_evidence": 182,
+        "empty_evidence": 328
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Audit Rights",
+      "corpus": {
+        "with_evidence": 52,
+        "empty_evidence": 48
+      },
+      "source": {
+        "with_evidence": 214,
+        "empty_evidence": 296
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Uncapped Liability",
+      "corpus": {
+        "with_evidence": 36,
+        "empty_evidence": 64
+      },
+      "source": {
+        "with_evidence": 111,
+        "empty_evidence": 399
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Cap On Liability",
+      "corpus": {
+        "with_evidence": 65,
+        "empty_evidence": 35
+      },
+      "source": {
+        "with_evidence": 275,
+        "empty_evidence": 235
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Liquidated Damages",
+      "corpus": {
+        "with_evidence": 18,
+        "empty_evidence": 82
+      },
+      "source": {
+        "with_evidence": 61,
+        "empty_evidence": 449
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Warranty Duration",
+      "corpus": {
+        "with_evidence": 19,
+        "empty_evidence": 81
+      },
+      "source": {
+        "with_evidence": 75,
+        "empty_evidence": 435
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Insurance",
+      "corpus": {
+        "with_evidence": 41,
+        "empty_evidence": 59
+      },
+      "source": {
+        "with_evidence": 166,
+        "empty_evidence": 344
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Covenant Not To Sue",
+      "corpus": {
+        "with_evidence": 25,
+        "empty_evidence": 75
+      },
+      "source": {
+        "with_evidence": 100,
+        "empty_evidence": 410
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    },
+    {
+      "name": "Third Party Beneficiary",
+      "corpus": {
+        "with_evidence": 11,
+        "empty_evidence": 89
+      },
+      "source": {
+        "with_evidence": 32,
+        "empty_evidence": 478
+      },
+      "sampled": {
+        "with_evidence": 5,
+        "empty_evidence": 5
+      },
+      "deviation": null
+    }
+  ],
+  "checks": {
+    "duplicate_ids": 0,
+    "duplicate_keys": 0,
+    "unmapped_document_keys": []
+  },
+  "outputs": {
+    "path": "evals/cuad/golden.jsonl",
+    "sha256": "74cd19bf3ac6c8d8dc02430207d137f62738bf37a57ff298ad330e6300381032",
+    "lines": 410
+  },
+  "categories_file": {
+    "path": "evals/cuad/categories.json",
+    "state": "verified",
+    "sha256": "52faa5df709d978cf03adc56cae44ef0f8d8f5ce634d53a526844702a7e45d92"
+  },
+  "routing_contrast": {
+    "path": "evals/routing/contrast.jsonl",
+    "samples": 14
+  },
+  "warnings": [
+    "37 evidence spans here carry masked or omitted text (*, _, [], 'omitted'), so they annotate placeholders rather than recoverable source text and will not project verbatim onto any parse of the source PDF.",
+    "96 rows keep evidence in CUAD's annotation order, which is not document order (answers[].answer_start is not monotonic). The evaluator must order projected spans by its own line numbers.",
+    "CUAD is an out-of-domain baseline rather than a product corpus, and its answers[].answer_start offsets belong to CUAD's own TXT extraction: they are never platform coordinates (datasets/cuad/MANIFEST.json).",
+    "evals/cuad/corpus.json is the ingested set (100 of 510 contracts). Changing it — a different source, a different selection rule, a different CORPUS_SEED — requires ingesting again and invalidates every measurement taken against the previous corpus."
+  ]
+}

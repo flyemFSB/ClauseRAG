@@ -1,0 +1,22 @@
+# Manual-installation settings required by Vite+ (https://viteplus.dev/guide/local-cli,
+# "Manual Installation"). Vite+ bundles Vite inside `@voidzero-dev/vite-plus-core`, so `vite` is
+# aliased to that package instead of the standalone `vite` dist-tag: a second, separately versioned
+# Vite copy breaks runtime identity checks (vite-plus issue #1391). The alias reports version 1.0.0,
+# which is outside the `^8` range that `vitest`, `@vitest/mocker` and `@vitejs/plugin-react` declare,
+# so `peerDependencyRules` suppresses that false mismatch.
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.0.0
+  vite-plus: 1.0.0
+
+overrides:
+  vite@*: "catalog:"
+  # `pnpm exec vp toolchain vitest` reports the bundled runner; the exact pin keeps a second
+  # Vitest copy (mocks, `expect`, runner state) out of the install. Re-check it after upgrading
+  # `vite-plus` (https://viteplus.dev/guide/upgrade-project).
+  vitest@*: 5.0.1
+
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"

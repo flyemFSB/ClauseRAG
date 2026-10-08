@@ -1,0 +1,111 @@
+/*
+ * The floor, and the parts of the page no component draws.
+ *
+ * `DESIGN.md` (Components → "Browser surfaces") makes these part of the system rather than browser
+ * defaults, and this file is where they are installed once so no page can forget them: the focus
+ * ring, the selection colour, the caret, placeholder contrast, scrollbars, and the reduced-motion
+ * collapse. Everything here either reads a token from `theme.css` or is a behaviour a reader is
+ * entitled to regardless of how a page is styled.
+ */
+
+/*
+ * One definition of the only state transition the system uses.
+ *
+ * `DESIGN.md` (Components → Motion) allows a colour change at ≤150ms and nothing else in CSS; that
+ * used to be thirty-nine copies of the same duration/ease literals, which is how a design reads as
+ * machine-assembled. A colour change is now one word: `tint`.
+ */
+@utility tint {
+  transition-property: background-color, color, border-color, fill, stroke;
+  transition-duration: var(--duration-instant);
+  transition-timing-function: var(--ease-standard);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  /*
+   * Focus. One ring for the whole system: a 1px accent edge plus a 3px wash at 25%. It is drawn with
+   * `:focus-visible` so a mouse click does not paint one, and it is never removed — a component that
+   * sets `outline: none` owes this rule a replacement at least as visible (§ Browser surfaces).
+   */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 25%, transparent);
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-accent) 25%, transparent);
+    color: var(--color-ink);
+  }
+
+  :where(input, textarea) {
+    caret-color: var(--color-accent);
+  }
+
+  /* Inline links carry their offset once, here, rather than at every call site. */
+  a {
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+
+  /* Placeholders are text, so they clear 4.5:1 — `--color-ink-secondary`, never `ink-muted`. */
+  :where(input, textarea)::placeholder {
+    color: var(--color-ink-secondary);
+  }
+
+  /* Autofill must not repaint a field: the browser's yellow would win over the token. */
+  :where(input, textarea):-webkit-autofill {
+    -webkit-text-fill-color: var(--color-ink);
+    box-shadow: 0 0 0 100px var(--color-canvas) inset;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--color-ink-muted) 40%, transparent) transparent;
+  }
+
+  /*
+   * Reduced motion collapses rather than shortens: a reader who asked for less motion gets none of
+   * it, including the spinners and Meter-driven loops a component keeps running.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

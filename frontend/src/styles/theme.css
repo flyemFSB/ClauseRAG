@@ -1,0 +1,294 @@
+/*
+ * The design tokens of `DESIGN.md`, as Tailwind v4 theme variables.
+ *
+ * This file is the only place a token value is written down in the frontend. `DESIGN.md` is the
+ * normative description and this is its executable form: the frontmatter token name, the CSS
+ * variable name and the utility name are the same word, so `colors.accent-strong` in the spec is
+ * `--color-accent-strong` here and `bg-accent-strong` in a component.
+ *
+ * Tailwind v4 is configured from CSS (https://tailwindcss.com/docs/theme), so this package has no
+ * `tailwind.config.*`. Consequences worth knowing before editing:
+ *
+ * - **Light and dark are the same variable names.** `@theme` emits every token on `:root` and the
+ *   generated utilities reference `var(--color-…)`, so `.dark` re-declares those variables and
+ *   nothing else changes. No `dark:` variant is needed for colour — only for things that are not a
+ *   token, such as which of two surfaces a component sits on.
+ * - **The spacing scale is Tailwind's, and it already is the spec's.** `DESIGN.md` fixes spacing at
+ *   4/8/12/16/24/32px; Tailwind's default numeric steps `1/2/3/4/6/8` are exactly those values, so
+ *   no `--spacing-*` tokens are declared. Read `p-4` as the spec's 16px.
+ * - The breakpoints are Tailwind's defaults too: `md` = 768, `lg` = 1024, `xl` = 1280 are the
+ *   spec's tablet / laptop / desktop, and `max-md:` is its mobile.
+ */
+
+@import "tailwindcss";
+/*
+ * The floor is imported here rather than from `main.tsx` so the cascade is decided in one place:
+ * `tailwindcss` declares the layer order (`theme, base, components, utilities`) and everything after
+ * it lands inside those layers, whatever order a bundler happens to emit two JavaScript imports in.
+ */
+@import "./base.css";
+/*
+ * Motion is anchored to framer-motion and CSS tint utility.
+ */
+
+/*
+ * Dark mode is a class on `<html>`, not the OS media query: the application owns the switch, and a
+ * reader who picked light on a dark OS must keep light. `@custom-variant` is what makes the `dark:`
+ * variant mean "inside `.dark`" instead of "prefers-color-scheme: dark".
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* — Neutral, light. One hue family (OKLCH H≈286°), so none of these grays reads as dirty next to
+   *   another. Contrast is measured against `--color-canvas` (see `DESIGN.md`, Colors). */
+  --color-canvas: #ffffff;
+  /*
+   * The desk (桌板) is the tone *behind* an island. It is not a surface a component is placed on: it
+   * only ever shows in the gutter around a floating container, which is what makes the container read
+   * as lifted without a heavy shadow. Chat and Console have their own desk because Console's cards do
+   * the lifting there, and a #F4F5F7 field under them would fight the hairline grid.
+   */
+  --color-desk: #f4f5f7;
+  --color-desk-console: #f4f5f7;
+  /* The chat history rail, inside the island: one step below the canvas it sits in. */
+  --color-rail: #f8f9fa;
+  /*
+   * The edge of a floating island. A 1px hairline at 8% is not a border in the usual sense — it is the
+   * island's own outline against the desk, and it is the one place the system declares a hairline and a
+   * shadow together (`DESIGN.md`, "The Island Exception").
+   */
+  --color-island-edge: rgb(0 0 0 / 0.08);
+  --color-surface: #f5f5f7;
+  --color-surface-hover: #e8e8ed;
+  --color-surface-strong: #e8e8ed;
+  /*
+   * Floating surfaces (popover, dialog, sheet, menu, toast). Identical to the canvas in light: there
+   * the shadow declares the layer. In dark it steps above the container tone, because the canvas is
+   * Desk #111216 and a black shadow on it declares nothing.
+   */
+  --color-float: #ffffff;
+  --color-ink: #1d1d1f;
+  /* #6E6E73 is 5.07:1 — the body-text floor. #86868B is 3.62:1 and may not carry body text. */
+  --color-ink-secondary: #6e6e73;
+  --color-ink-muted: #86868b;
+  /* Decorative separators only: 1.51:1, so never the boundary of a control. */
+  --color-border: #d2d2d7;
+  /* A control's own edge must clear 3:1 (WCAG 1.4.11): 3.62:1. */
+  --color-control-border: #86868b;
+  --color-divider: #e5e5ea;
+
+  /*
+   * — Accent, legal precision blue. `accent` marks (4.10:1 — fills, focus, focus rings, non-text
+   * indicators); `accent-strong` carries anything read at body size (6.16:1), including a white
+   * label on a filled button. `DESIGN.md`, "The Legible Accent Rule".
+   */
+  --color-accent: #0a56c4;
+  --color-accent-strong: #084298;
+  /* A wash, not a text colour. #084298 on it is 6.2:1. */
+  --color-accent-soft: #f0f6ff;
+
+  /*
+   * — Semantic, paired: the fill is for marks, meters and rings (≥3:1 against the canvas is not
+   * reached by any of them, so they are never the only signal), the `-ink` is for anything read as
+   * text — badges, inline errors, stage labels.
+   */
+  --color-success: #52c41a;
+  --color-success-ink: #237804;
+  --color-warning: #faad14;
+  --color-warning-ink: #a05c00;
+  /* A wash behind a threshold a reader must not miss (`<7%`). Ink stays `--color-ink` on it: 15.4:1. */
+  --color-warning-soft: #fff4d6;
+  --color-error: #ff4d4f;
+  --color-error-ink: #cf1322;
+
+  /* Commercial contract review risk hierarchy */
+  --color-risk-critical: #e02424;
+  --color-risk-critical-soft: #fdf2f2;
+  --color-risk-caution: #d97706;
+  --color-risk-caution-soft: #fffbeb;
+  --color-risk-standard: #059669;
+  --color-risk-standard-soft: #ecfdf5;
+
+  /* — Type. The system stack is the only stack (`DESIGN.md`, "The Single Stack Rule"). */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC",
+    sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+
+  --text-title: 20px;
+  --text-title--line-height: 1.3;
+  --text-section: 15px;
+  --text-section--line-height: 1.4;
+  --text-body: 14px;
+  --text-body--line-height: 1.5;
+  /*
+   * The answer itself. A clinical answer is the one thing on the page that is *read* rather than
+   * scanned: one step up from UI body text and a longer measure line, so the reading column has a
+   * hierarchy of its own instead of sitting at the same 12–14px as its own metadata.
+   */
+  --text-answer: 15px;
+  --text-answer--line-height: 1.7;
+  --text-dense: 13px;
+  --text-dense--line-height: 1.45;
+  --text-label: 12px;
+  --text-label--line-height: 1.4;
+  --text-quote: 12.5px;
+  --text-quote--line-height: 1.5;
+
+  /* — Shape. Four steps: a control, a card, a floating island, and a pill. The island step exists
+   *   because the chat workspace is a container the reader lives inside, not a card among cards; the
+   *   pill exists because status and the mode switcher are the two shapes that are neither. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-island: 16px;
+  --radius-pill: 999px;
+
+  /* — Elevation. A surface declares a hairline **or** a shadow, never both
+   *   (`DESIGN.md`, "The One Declaration Rule") — except an island, whose hairline is its edge and
+   *   whose shadow is its height. */
+  /* — Elevation. Modern layered tactile shadows with subtle optical hairline */
+  --shadow-tactile: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.02);
+  --shadow-island: 0 0 0 1px rgb(0 0 0 / 0.05), 0 8px 30px -4px rgb(0 0 0 / 0.08);
+  --shadow-workbench:
+    0 0 0 1px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.03), 0 12px 28px -4px rgb(0 0 0 / 0.08);
+  --shadow-popover:
+    0 0 0 1px rgb(0 0 0 / 0.07), 0 4px 6px -1px rgb(0 0 0 / 0.05),
+    0 16px 36px -4px rgb(0 0 0 / 0.14);
+  --shadow-dialog: 0 0 0 1px rgb(0 0 0 / 0.08), 0 24px 48px -12px rgb(0 0 0 / 0.22);
+  --shadow-toast: 0 0 0 1px rgb(0 0 0 / 0.06), 0 8px 24px -4px rgb(0 0 0 / 0.16);
+
+  /* — Motion. State changes decelerate into place; entrances decelerate harder. */
+  --ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/*
+ * The four motion durations and the scrim are not Tailwind namespaces, so they live as plain custom
+ * properties. Read them with `duration-[var(--duration-state)]` or from `framer-motion`.
+ * `--duration-instant` also bounds the only CSS transitions the spec allows: colour and opacity.
+ */
+:root {
+  --duration-instant: 120ms;
+  --duration-state: 200ms;
+  --duration-enter: 240ms;
+  --duration-layout: 400ms;
+  --scrim: rgb(0 0 0 / 0.32);
+
+  /* Unified semantic mappings */
+  --background: var(--color-canvas);
+  --foreground: var(--color-ink);
+  --card: var(--color-canvas);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-float);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-accent-strong);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-surface);
+  --secondary-foreground: var(--color-ink);
+  --muted: var(--color-surface);
+  --muted-foreground: var(--color-ink-secondary);
+  --accent: var(--color-accent-soft);
+  --accent-foreground: var(--color-accent-strong);
+  --destructive: var(--color-error);
+  --destructive-foreground: #ffffff;
+  --border: var(--color-border);
+  --input: var(--color-control-border);
+  --ring: var(--color-accent);
+  --radius: 0.5rem;
+}
+
+/*
+ * Dark mode. Same roles, and a ramp taken from the use scene rather than from black: a clinician
+ * reading at night wants a dim room, not a hole, so the desk is #111216 (never #000000) and the
+ * island steps up to #1A1D24. The ramp is
+ * desk #111216 → rail #16191F → island #1A1D24 → raised/surface #21242C → float #1F2228 →
+ * hover #282C35 → strong #323744.
+ *
+ * Every body-text pair was measured against the surface it sits on (WCAG 2.1, `DESIGN.md` → Colors):
+ * ink #E6E6E6 is 15.0:1 on the desk and 13.5:1 on the island; ink-secondary #8C8C8C is 5.57:1 on the
+ * desk, 5.02:1 on the island, 4.74:1 on the float and 4.61:1 on the raised surface — the last is the
+ * floor this palette runs at, and it is why secondary text never moves onto `surface-strong`.
+ *
+ * The semantic colours are single-valued here because each already clears 4.5:1 against both the
+ * canvas and the container (error 5.16:1, success 7.44:1, warning 8.88:1 against the island), so
+ * `-ink` and fill collapse onto one step and a component needs no dark-specific colour choice.
+ */
+.dark {
+  --color-canvas: #1a1d24;
+  --color-desk: #111216;
+  --color-desk-console: #111216;
+  --color-rail: #16191f;
+  --color-surface: #21242c;
+  --color-surface-hover: #282c35;
+  --color-surface-strong: #323744;
+  /* The composer and the popover sit above the island by one step, which is what the brief's #1F2228
+   * is: the same relationship light mode expresses with a white float and a shadow. */
+  --color-float: #1f2228;
+  --color-island-edge: rgb(255 255 255 / 0.08);
+  --color-ink: #e6e6e6;
+  /* ≥5.0:1 on the desk, the island and the rail; 4.74:1 on the float. */
+  --color-ink-secondary: #8c8c8c;
+  /* 3.56:1: large text and control boundaries only. */
+  --color-ink-muted: #737373;
+  /* Decorative separators inside a surface, and the island's own outline. */
+  --color-border: #2a2e38;
+  --color-control-border: #6f7787;
+  --color-divider: #232630;
+
+  /* 5.64:1 against the island and 5.33:1 against the float, so one value carries both fills and
+   * body-size accent text. */
+  --color-accent: #4096ff;
+  --color-accent-strong: #4096ff;
+  /* #4096FF on this is 4.97:1. */
+  --color-accent-soft: #11274a;
+
+  --color-success: #52c41a;
+  --color-success-ink: #52c41a;
+  --color-warning: #faad14;
+  --color-warning-ink: #faad14;
+  /* A wash, not a text colour: #E6E6E6 on it is 11.1:1. */
+  --color-warning-soft: #3a2f14;
+  --color-error: #ff4d4f;
+  --color-error-ink: #ff4d4f;
+
+  /* Commercial contract review risk hierarchy */
+  --color-risk-critical: #f05252;
+  --color-risk-critical-soft: #3b1616;
+  --color-risk-caution: #f59e0b;
+  --color-risk-caution-soft: #3b2a10;
+  --color-risk-standard: #10b981;
+  --color-risk-standard-soft: #0e3324;
+
+  /* The island still lifts in dark, but the tone step is what declares it: the shadow only softens
+   * the seam. */
+  --shadow-tactile: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --shadow-island: 0 0 0 1px rgb(255 255 255 / 0.08), 0 8px 32px -4px rgb(0 0 0 / 0.5);
+  --shadow-workbench: 0 0 0 1px rgb(255 255 255 / 0.08), 0 4px 16px rgb(0 0 0 / 0.45);
+  --shadow-popover: 0 0 0 1px rgb(255 255 255 / 0.1), 0 12px 32px -4px rgb(0 0 0 / 0.6);
+  --shadow-dialog: 0 0 0 1px rgb(255 255 255 / 0.12), 0 24px 48px -12px rgb(0 0 0 / 0.7);
+  --shadow-toast: 0 0 0 1px rgb(255 255 255 / 0.08), 0 8px 24px -4px rgb(0 0 0 / 0.4);
+
+  --scrim: rgb(0 0 0 / 0.56);
+
+  /* Unified dark mappings */
+  --background: var(--color-canvas);
+  --foreground: var(--color-ink);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-float);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-accent);
+  --primary-foreground: #111216;
+  --secondary: var(--color-surface);
+  --secondary-foreground: var(--color-ink);
+  --muted: var(--color-surface);
+  --muted-foreground: var(--color-ink-secondary);
+  --accent: var(--color-accent-soft);
+  --accent-foreground: var(--color-accent);
+  --destructive: var(--color-error);
+  --destructive-foreground: #ffffff;
+  --border: var(--color-border);
+  --input: var(--color-control-border);
+  --ring: var(--color-accent);
+}
