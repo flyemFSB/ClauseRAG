@@ -9,7 +9,7 @@ upload（上传完成）
   → parse（解析抽取与 Markdown 规范化）
   → chunk（Parent-Child 两级分块）
   → embed（批量向量化嵌入）
-  → index（写入 Qdrant 向量库与 PostgreSQL 索引）
+  → index（写入 pgvector 向量表与 pg_search BM25 索引）
   → ready（就绪态）
 ```
 
@@ -46,15 +46,16 @@ upload（上传完成）
 ## 向量化与集合索引 (Embedding & Indexing)
 
 1. **向量嵌入服务**：通过 SiliconFlow 调用 `BAAI/bge-m3` 模型，生成 1024 维密集向量。系统显式限定批处理大小（`EMBEDDING_BATCH_SIZE`，默认 16），避免触发外部网关超时。
-2. **Qdrant 向量集合隔离**：
-   - 业务切片统一录入 `rag_child_chunks` 独立集合；
-   - Payload 仅保留关键检索元数据与过滤字段：`child_id`, `parent_id`, `document_version_id`, `knowledge_base_id`, `heading_path`, `line_start`, `line_end`。
-   - 依据业务键 `document_version_id` 执行批量删除与版本替换，保障原子清理。
+2. **向量表就地隔离**：
+   - 业务切片统一录入 `child_chunk_embeddings`（一行对应一个子块，`vector(1024)` + HNSW cosine 索引）；
+   - 表上只存 `child_id`、`knowledge_base_id`、`embedding_model` 与 `embedding`：正文、标题路径与行号一律回权威表读，不在这里再存一份；
+   - `knowledge_base_id` 由 `child_chunks -> document_versions -> documents` 当场推导写入，不接受调用者传入的关联；子块删除时级联删除对应行，不需要跨存储对账。
+3. **写入门控**：嵌入向量写入与作业状态写入扔在同一数据库，因此向量写入的 `INSERT ... SELECT` 里直接校验 `job_id`、`attempt`、`stage`、`status` 与租约是否仍属于本次尝试；不属于则匹配零行，写入成为空操作，由既有状态机照旧回报 SUPERSEDED/VANISHED。
 
 ---
 
 ## 交付与就绪门禁 (Verification Gates)
 
-只有当解析产物、切片数据、PostgreSQL 关键词索引与 Qdrant 向量全部持久化落库后，文档版本才标记为 `ready`：
+只有当解析产物、切片数据、BM25 关键词索引与 pgvector 向量全部持久化落库后，文档版本才标记为 `ready`：
 - 解析阶段生成的 Markdown 制品及元数据（页数、行数、警告信息）持久化至 `parse_artifacts` 表与对象存储；
 - 失败时严格记录 `error_class` 与错误摘要，支持控制台一键手动重试。

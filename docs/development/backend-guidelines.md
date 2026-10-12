@@ -12,7 +12,7 @@
 ## 架构与分层边界
 
 - **模型分层隔离**：API 契约模型（Pydantic Schemas）、领域实体模型（Domain Models）、持久化映射（ORM Models）、外部供应商载荷及 LangGraph 状态严格隔离，禁止跨层泄漏。
-- **Domain 纯粹性**：领域层严禁引入 FastAPI、SQLAlchemy、Qdrant、LangChain、RabbitMQ 等任何外部框架依赖。
+- **Domain 纯粹性**：领域层严禁引入 FastAPI、SQLAlchemy、pgvector、LangChain、RabbitMQ 等任何外部框架依赖。
 - **薄 API 路由**：API 接口仅负责请求参数校验、鉴权、调用 Application 业务服务并序列化返回响应。
 - **薄适配器**：Infrastructure 适配器遵循极简原则，优先使用依赖的原生 API。
 - **命名规范**：严禁创建 `common`、`shared`、`utils`、`helpers`、`BaseManager` 等职责不清的垃圾文件。
@@ -21,7 +21,7 @@
 
 ## 并发控制与故障处理
 
-- **有界超时**：所有外部网络 I/O（HTTP、Qdrant、RabbitMQ、S3）必须显式配置有界超时，严禁无限等待。
+- **有界超时**：所有外部网络 I/O（HTTP、RabbitMQ、S3）必须显式配置有界超时，严禁无限等待；数据库侧的 ANN 扩扫用 `HNSW_MAX_SCAN_TUPLES` 给出同样的上界。
 - **保护取消链**：**绝对禁止吞没 `asyncio.CancelledError`**，保障请求中止时资源即时回收。
 - **结构化并发**：优先使用 `asyncio.TaskGroup` 与 `asyncio.timeout`。
 - **禁止共享 Session**：严禁跨并发协程或并行任务共享同一个 SQLAlchemy `AsyncSession`。

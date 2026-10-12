@@ -5,8 +5,9 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.x-FF9900?logo=langchain&logoColor=white)](https://www.langchain.com/langgraph)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Qdrant](https://img.shields.io/badge/Qdrant-1.12+-DC2626?logo=qdrant&logoColor=white)](https://qdrant.tech/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![pgvector](https://img.shields.io/badge/pgvector-HNSW-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![ParadeDB](https://img.shields.io/badge/ParadeDB-pg__search%20BM25-1D4ED8)](https://www.paradedb.com/)
 [![RabbitMQ](https://img.shields.io/badge/RabbitMQ-3.13-FF6600?logo=rabbitmq&logoColor=white)](https://www.rabbitmq.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Vite+](https://img.shields.io/badge/Vite%2B-vp-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -45,7 +46,7 @@
 **ClauseRAG** 围绕**高确定性与防伪追溯**展开设计：
 - **异构合同解析引擎**：统一纳管 PDF、DOCX、XLSX、扫描图等多源合同，标准化为结构化 Markdown；
 - **Parent-Child 树状双层分块**：Child 块负责精确检索与行级锚定，Parent 块负责富语义提示词拼接；
-- **Dense + Keyword 双通道与 RRF 融合**：Qdrant 向量检索与 PostgreSQL `pg_trgm` 倒排检索互补，经由应用层 RRF 融合与 Cross-Encoder 语义重排；
+- **Dense + Keyword 双通道与 RRF 融合**：pgvector 原生 HNSW 向量检索与 pg_search BM25 词项检索互补，经由应用层 RRF 融合与 Cross-Encoder 语义重排；
 - **动态证据门控（Evidence Gate）**：基于重排质量判定证据充分度，支持有界查询重写；证据不足时主动弃答（Abstain）；
 - **三层引用防伪协议（Citation Protocol）**：提示词防伪隔离、服务端证据集闭环校验、对象存储权威物理行号映射；
 - **工业级双工作区体验**：无缝切换“沉浸式合同审查工作区”与“SaaS 级法务资产与流水线控制台”。
@@ -58,8 +59,8 @@
   - 支持 `.pdf`、`.docx`、`.pptx`、`.xlsx`、`.html`、`.txt`、`.md` 及主流图像格式；
   - 自动路由：Office/PDF 文档走 AnyDoc 结构化抽取，扫描件与图像无缝升级至 PaddleOCR-VL 进行版面分析与文字识别。
 - **混合检索与深度重排**：
-  - **Dense 向量通道**：SiliconFlow `BAAI/bge-m3`（1024 维密集向量）+ Qdrant 业务切片隔离集合；
-  - **Keyword 关键词通道**：PostgreSQL 原生 `pg_trgm` 倒排匹配，保障合同定义、法条编号精确召回；
+  - **Dense 向量通道**：SiliconFlow `BAAI/bge-m3`（1024 维密集向量）+ PostgreSQL `child_chunk_embeddings` 的 pgvector HNSW cosine 索引；
+  - **Keyword 关键词通道**：ParadeDB `pg_search` BM25 索引，保障合同定义、法条编号与 CJK 短词的精确召回；
   - **应用层 RRF 融合**：Reciprocal Rank Fusion（$k=60$）统一无量纲融合双通道候选集；
   - **Cross-Encoder 交叉注意力重排**：SiliconFlow `BAAI/bge-reranker-v2-m3` 深度计算语义相关性。
 - **有界图状态机与证据门控**：
@@ -111,8 +112,8 @@ $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
 ┌────────────────────────────┐          ┌──────────────────────────────┐          ┌─────────────────────────────────┐
 │     RabbitMQ 业务队列       │ ───────> │    Taskiq Worker 异步消费     │ ───────> │      外部存储与大模型提供方     │
 │     - taskiq (任务分发)    │          │    - 异构文档解析 (Parse)    │          │  - SiliconFlow (LLM / Embed)    │
-│     - taskiq.dead_letter   │          │    - 确定性分块规划 (Chunk)  │          │  - PostgreSQL 16 (事实与倒排)   │
-│                            │          │    - 密集向量计算 (Embed)    │          │  - Qdrant (子块稠密向量库)      │
+│     - taskiq.dead_letter   │          │    - 确定性分块规划 (Chunk)  │          │  - ParadeDB (PostgreSQL 18)     │
+│                            │          │    - 密集向量计算 (Embed)    │          │    事实 / 倒排 / pgvector HNSW  │
 │                            │          │    - 向量核验就绪 (Index)    │          │  - RustFS / S3 (对象存储)       │
 └────────────────────────────┘          └──────────────────────────────┘          └─────────────────────────────────┘
 ```
@@ -128,7 +129,7 @@ $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
   - **Parent Chunk（语义父块）**：1024–2048 tokens，基于 Markdown 标题树（Heading Path）与段落边界聚合成完整语义上下文，负责大模型提问拼装。
 
 ### 2. 双通道混合召回与 RRF 融合
-- **双路并发检索**：API 服务并发向 Qdrant（Dense 密集向量，BGE-M3）与 PostgreSQL（Keyword 倒排，`pg_trgm`）发起检索，单路设置硬性超时保护。
+- **双路并发检索**：API 服务并发向 pgvector（Dense 密集向量，BGE-M3，HNSW cosine）与 pg_search（Keyword BM25）发起检索，两者同处一个数据库但各自独立会话，单路设置硬性超时保护。
 - **应用层 RRF 融合**：由应用层执行无量纲的倒数排名融合算法（Reciprocal Rank Fusion，常数 $k=60$）：
   $$\text{RRF}(d) = \sum_{c \in \{\text{dense}, \text{keyword}\}} \frac{w_c}{k + r_c(d)}$$
 - **交叉注意力重排**：截取 RRF 融合前 50 条候选子块送入 BGE-Reranker-v2-m3，按交叉注意力得分过滤并重新排序。
@@ -153,8 +154,9 @@ $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
 | **基础环境** | Python 3.12 (`>=3.12,<3.13`) | 锁定 Python 3.12 稳定版本，以 `uv.lock` 为绝对依赖权威，秒级依赖解析与环境同步。 |
 | **API 服务** | FastAPI + Pydantic v2 | 高性能异步 ASGI 框架，强类型请求/响应校验，OpenAPI 规范自动生成。 |
 | **Agent 状态机** | LangGraph 1.x + LangChain 1.x | 显式构建有界循环图，支持 Checkpoint 状态暂存、事件流式分发与单步执行追踪。 |
-| **关系持久化** | PostgreSQL 16 + SQLAlchemy 2.0 Async | 系统唯一的事实真相来源（Single Source of Truth）；内置 `pg_trgm` 提供关键词倒排能力。 |
-| **向量存储** | Qdrant | 高性能稠密向量数据库，多租户逻辑隔离，支持点计数一致性核验。 |
+| **关系持久化** | ParadeDB (PostgreSQL 18) + SQLAlchemy 2.0 Async | 系统唯一的事实真相来源（Single Source of Truth）；向量、关键词索引与业务事实同库同事务。 |
+| **向量检索** | pgvector 原生 HNSW cosine | `child_chunk_embeddings.embedding vector(1024)` 上的 HNSW 索引，随 WAL 复制与 PITR 一起备份；启动即受 readiness 核对。 |
+| **关键词检索** | ParadeDB `pg_search` BM25 | 真正的相关性模型而非子串扫描；默认 `unicode_words` 分词器按 CJK 单字切分，中英混排合同与定义词均能命中。 |
 | **异步队列** | RabbitMQ + Taskiq | RabbitMQ 作为平台**唯一的业务异步消息队列**；Taskiq 提供异步消费与重试；严禁将 Redis 用作队列。 |
 | **对象存储** | RustFS / AWS S3 兼容协议 | 高效存储原始合同文件、解析后的标准 Markdown 制品及 JSONL 分块元数据。 |
 | **全链路观测** | Langfuse + 结构化日志 (structlog) | 追踪 LLM 调用链、Token 消耗、检索延迟与证据门控决策；脱敏敏感数据。 |
@@ -168,7 +170,7 @@ $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
 
 确保本机已安装以下基础工具：
 - **Docker** 与 **Docker Compose** (v2.20+)
-- **Python 3.12** 与 **uv** (`curl -LsSf https://astral.sh/uv/install.sh | sh` 或 `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`)
+- **Python 3.12** 与 **uv** (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - **Node.js 24** 与 **pnpm 12**
 - **Vite+ CLI (`vp`)** (`pnpm add -g @vitejs/vite-plus`)
 
@@ -176,22 +178,52 @@ $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
 
 ### 方案 A：全栈容器化一键部署（推荐验收路径）
 
-执行一条命令，自动完成镜像构建、数据库自动迁移、服务就绪等待：
+执行一条命令，自动完成镜像构建、从模型建立 schema、服务就绪等待：
 
-```powershell
-# 启动全栈（基础设施 + API + Agent + Worker + Web 前端）并等待就绪
+```bash
+# 启动全栈（基础设施 + 一次性 schema-init + API + Agent + Worker + Web 前端）并等待就绪
 docker compose -f infra/compose.yaml --profile app up -d --build --wait
 
 # 验证各依赖与服务健康状态
-Invoke-WebRequest http://localhost:5173/health/ready
-Invoke-WebRequest http://localhost:5173/api/v1/config
+curl -fsS http://localhost:5173/health/ready
+curl -fsS http://localhost:5173/api/v1/config
 ```
 
 在浏览器打开 `http://localhost:5173` 即可立即开始使用。  
 如需停止并清理容器：
-```powershell
+```bash
 docker compose -f infra/compose.yaml --profile app down
 ```
+
+---
+
+### 从 Qdrant 版本升级（一次性）
+
+向量存储已经内置到 ParadeDB 镜像里，旧 `QDRANT_*` 配置项已删除，Qdrant 服务也不再启动。
+升级需要做三件事，顺序不能变：
+
+1. **逻辑备份**（镜像从 Alpine 换到 Debian trixie，同 major 不代表 locale/collation 可互换，
+   不能把旧数据卷直接挂给新镜像）：
+   ```bash
+   docker run -d --name pg-old -v clauserag_postgres-data:/var/lib/postgresql \
+     -e POSTGRES_USER=rag -e POSTGRES_PASSWORD=rag_local postgres:18-alpine
+   docker exec pg-old sh -c "pg_dumpall -U rag --clean --if-exists > /tmp/dump.sql"
+   docker cp pg-old:/tmp/dump.sql dist/pg-migration/pg18-pre-paradedb.sql
+   docker rm -f pg-old
+   ```
+   删掉 dump 里的 `DROP ROLE IF EXISTS rag;` / `CREATE ROLE rag;` 两行（角色由镜像环境变量建立，
+   且不能删掉当前连接自己的角色），其余原样保留。
+2. **新卷启动并恢复**：
+   ```bash
+   docker compose -f infra/compose.yaml up -d postgres --wait
+   docker cp dist/pg-migration/pg18-pre-paradedb.sql clauserag-postgres:/tmp/dump.sql
+   docker exec clauserag-postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 -f /tmp/dump.sql
+   ```
+3. **建扩展与索引**：`docker compose -f infra/compose.yaml --profile app up -d --build --wait`
+   里的一次性 `schema-init` 服务会自动建好 `vector` / `pg_search` 扩展、业务表与两张检索索引（本地亦可运行 `uv run python -m cli schema-init`）。
+
+旧数据卷 `clauserag_postgres-data` 与 `clauserag_qdrant-data` 作为回滚工件保留，由数据负责人按保留期销毁；
+它们不会再被本拓扑挂载。向量数据不迁移：`child_chunk_embeddings` 从空表开始，由重新向量化填充。
 
 ---
 
@@ -199,31 +231,30 @@ docker compose -f infra/compose.yaml --profile app down
 
 在本地开发、断点调试与界面热更新时，推荐使用“**依赖跑在容器，进程跑在宿主机**”模式：
 
-```powershell
+```bash
 # 1. 复制并配置环境变量
-Copy-Item .env.example .env
+cp .env.example .env
 # 编辑 .env 配置 SILICONFLOW_API_KEY 与 PADDLEOCR_API_KEY
 
-# 2. 一键联动启动（拉起基础容器依赖、执行迁移、启动 3 个后端进程与前端开发服务器）
-pwsh scripts/dev.ps1
+# 2. 拉起基础容器依赖，然后建表、初始化存储桶
+docker compose -f infra/compose.yaml up -d --wait
+uv run python -m cli schema-init
+uv run python -m cli storage-init
+
+# 3. 三个后端进程与前端各起一个终端（改了代码直接重启对应进程）
+uv run python -m api.main            # 业务 API       http://127.0.0.1:8000
+uv run python -m agent_runtime.main  # Agent 运行时    http://127.0.0.1:8001
+uv run python -m worker.main         # 摄取流水线 Worker
+pnpm --dir frontend run dev          # 前端 dev server http://localhost:5173
 ```
 
-控制台将输出服务端口与 PID 状态表：
-```text
-================ 开发运行环境栈 ================
-  api            PID 10248   http://127.0.0.1:8000
-  agent-runtime  PID 10252   http://127.0.0.1:8001
-  worker         PID 10256
-  frontend       PID 10260   http://localhost:5173
-  运行日志       d:\YZB\RAG\.probe\dev
-  访问入口       http://localhost:5173
-===================================================
+改了 ORM 模型之后要重建表结构（破坏性：先删表再建，现有数据全部丢失）：
+
+```bash
+uv run python -m cli schema-reset
 ```
 
-开发完毕后安全停止宿主进程：
-```powershell
-pwsh scripts/dev.ps1 -Stop
-```
+仓库不提供平台绑定的一键脚本（`.ps1`/`.bat`）：最终部署目标是 Debian 服务器，本地与部署用同一套命令。
 
 ---
 
@@ -233,9 +264,14 @@ pwsh scripts/dev.ps1 -Stop
 
 ### 1. 静态代码与类型检查（每次提交前必过）
 
-```powershell
+```bash
 # 后端与评测集全量静态门禁（依赖锁定同步 + Ruff 代码检查 + Ruff 格式化 + Pyright strict 模式 0 错误 + 入口检查 + 单向架构依赖核验 + 评测集复现）
-pwsh scripts/check.ps1
+uv sync --locked --group eval
+uv run ruff check backend/src
+uv run ruff format --check backend/src
+uv run pyright backend/src
+uv run python scripts/check-architecture.py
+uv run python scripts/build-goldenset.py --verify
 
 # 前端代码格式化、Linter 与类型检查
 pnpm --dir frontend run check
@@ -258,16 +294,15 @@ pnpm --dir frontend run test
 
 ```text
 ├── backend/
-│   ├── migrations/            # Alembic 数据库结构演进迁移脚本
 │   └── src/
 │       ├── api/               # FastAPI REST 路由接入层、HTTP 异常映射与配置契约
 │       ├── application/       # 业务用例服务层 (Ingestion, Retrieval, Chat, Citations)
 │       ├── domain/            # 纯业务领域模型 (Document, Chunk, Citation, Knowledge)
-│       ├── infrastructure/    # 外部协议适配器 (PostgreSQL, Qdrant, RabbitMQ, S3, SiliconFlow)
+│       ├── infrastructure/    # 外部协议适配器 (PostgreSQL/pgvector, RabbitMQ, S3, SiliconFlow)
 │       ├── composition/       # 依赖注入容器装配工厂与运行时编排
 │       ├── agent_runtime/     # LangGraph 审查 Agent 有界图状态机与流式引擎
 │       ├── worker/            # Taskiq 异步摄取流水线任务消费者
-│       └── cli/               # 平台运维管理命令行工具集 (storage-init, reindex, cleanup)
+│       └── cli/               # 平台运维管理命令行工具集 (schema-init, storage-init, reindex, cleanup)
 ├── frontend/
 │   ├── src/
 │   │   ├── app/               # React 应用入口与全局 Providers 配置

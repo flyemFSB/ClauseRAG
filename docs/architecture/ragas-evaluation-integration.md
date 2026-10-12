@@ -78,7 +78,7 @@ knowledge_base_id AND document_version_id IN scope
 
 实现要求：
 
-- dense：Qdrant filter 同时约束 `knowledge_base_id` 和 `document_version_id`；
+- dense：pgvector 查询同时约束 `child_chunk_embeddings.knowledge_base_id` 与权威 `documents.knowledge_base_id`，并按 `document_version_id` 限定版本；
 - keyword：PostgreSQL 查询增加 `document_version_id` 条件；
 - hydrate：继续校验候选的 `document_version_id`、`knowledge_base_id` 和 `ready` 状态；
 - scope 为空时保持生产行为，即检索整个知识库。
@@ -450,20 +450,20 @@ concurrency/retry/timeout/seed
 
 建议提供以下命令，所有命令都写 manifest 并使用同一个 run directory：
 
-```powershell
-uv run --group eval python -m cli evaluate-ragas `
-  --dataset evals/cuad/golden.jsonl `
-  --knowledge-base-id <evaluation-kb> `
-  --mode trace `
+```bash
+uv run --group eval python -m cli evaluate-ragas \
+  --dataset evals/cuad/golden.jsonl \
+  --knowledge-base-id <evaluation-kb> \
+  --mode trace \
   --limit 410
 
-uv run --group eval python -m cli evaluate-ragas `
-  --run-dir dist/verify/ragas/<run_id> `
+uv run --group eval python -m cli evaluate-ragas \
+  --run-dir dist/verify/ragas/<run_id> \
   --mode deterministic
 
-uv run --group eval python -m cli evaluate-ragas `
-  --run-dir dist/verify/ragas/<run_id> `
-  --mode ragas `
+uv run --group eval python -m cli evaluate-ragas \
+  --run-dir dist/verify/ragas/<run_id> \
+  --mode ragas \
   --metrics faithfulness,answer_relevancy
 ```
 
@@ -527,7 +527,7 @@ uv run --group eval python -m cli evaluate-ragas `
 
 执行仓库要求的静态检查，并增加真实容器评测 probe：
 
-```powershell
+```bash
 uv run ruff check backend/src
 uv run pyright backend/src
 uv run python scripts/check-architecture.py
@@ -606,7 +606,7 @@ docker compose -f infra/compose.yaml --profile app up -d --build --wait
 4. **smoke 需要完整 `Settings`**。`load_settings()` 要求数据库/队列/对象存储配置，评测命令与其它
    运维子命令一样需要同一套 env（探针用 `Set-ProbeEnvironmentDefaults` 注入），不是只要
    `EVAL_*`。
-5. **`scripts/check.ps1` 现在 sync eval 组**。`infrastructure/evaluation` 属于 `backend/src`，
+5. **静态门禁直接敲命令**（ADR-0035 删掉了平台绑定的便捷脚本）。`infrastructure/evaluation` 属于 `backend/src`，
    不装 eval 组时 Pyright strict 会因缺少 ragas 类型报 45 个 Unknown 错误（实测）。生产部署仍然
    `uv sync --locked --no-group eval`，因为没有任何服务启动路径导入评测包。
 

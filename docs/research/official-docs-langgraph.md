@@ -113,7 +113,7 @@ checkpoint 不要它们），因此它们属于 `RetrievalResult.diagnostics`，
 > —— <https://docs.langchain.com/oss/python/langgraph/use-time-travel>
 
 **含义（对本计划）**：合并节点后，“进程在检索中途崩溃”会从检索节点之前重放整轮检索（而非从中途续跑）。
-检索是只读的（Qdrant/PostgreSQL 查询，无副作用），重放安全；代价是失去“检索内部步骤级”的恢复点，
+检索是只读的（PostgreSQL / ParadeDB 向量与关键词查询，无副作用），重放安全；代价是失去“检索内部步骤级”的恢复点，
 而这正是计划明确要放弃的东西（`max_retrieval_rounds` 仍是唯一的环路上限，`rounds` 由 `plan_retrieval` 计数）。
 恢复**所需**的事实因此只剩：`evidence`、`citation_sources`、`context`、`context_tokens` —— 即
 `generate`/`validate_citations`/runner 会读的那一份记录。

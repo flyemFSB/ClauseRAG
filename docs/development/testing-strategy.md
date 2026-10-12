@@ -4,8 +4,13 @@
 
 ## 静态门禁（代码是否自洽）
 
-```powershell
-pwsh scripts/check.ps1          # uv sync --locked --group eval + Ruff + Ruff format + Pyright strict + 入口导入 + 架构方向 + goldenset 可复现性
+```bash
+uv sync --locked --group eval    # 依赖锁定同步
+uv run ruff check backend/src
+uv run ruff format --check backend/src
+uv run pyright backend/src       # Strict 模式
+uv run python scripts/check-architecture.py
+uv run python scripts/build-goldenset.py --verify
 pnpm --dir frontend run check   # 格式化 + lint + 类型（type-aware）
 pnpm --dir frontend run test    # 纯逻辑测试（4 个文件）
 ```
@@ -14,15 +19,15 @@ pnpm --dir frontend run test    # 纯逻辑测试（4 个文件）
 
 ## 运行时验收（系统是否真的跑起来）
 
-```powershell
+```bash
 docker compose -f infra/compose.yaml --profile app up -d --build --wait
 ```
 
-一条命令做完：构建后端与前端镜像 → 一次性 `migrate` 执行 `alembic upgrade head` → 起 `api`、`agent`、`worker`、`web` 并等它们 healthy。随后核对 nginx 单一入口上的真实响应：
+一条命令做完：构建后端与前端镜像 → 一次性 `schema-init` 服务从 ORM 模型建表并装好检索扩展 → 起 `api`、`agent`、`worker`、`web` 并等它们 healthy。随后核对 nginx 单一入口上的真实响应：
 
-```powershell
-Invoke-WebRequest http://localhost:5173/health/ready    # 逐依赖就绪；503 表示某项依赖不可用，响应里带每项延迟
-Invoke-WebRequest http://localhost:5173/api/v1/config   # 本进程实际生效的配置（密钥只报是否已配置）
+```bash
+curl -fsS http://localhost:5173/health/ready    # 逐依赖就绪；503 表示某项依赖不可用，响应里带每项延迟
+curl -fsS http://localhost:5173/api/v1/config   # 本进程实际生效的配置（密钥只报是否已配置）
 ```
 
 还有一类检查只能人来做，也必须做：上传一份真实合同、等流水线跑完、提问、点开引用卡片核对行号与原文、确认 SSE 是逐帧到达而不是最后一次性吐出。交付前每个功能改动至少走一遍这条路径。

@@ -1,5 +1,11 @@
 # 官方文档核对：Qdrant（Official docs cross-check）
 
+> **已被取代（2026-10-12）**：Qdrant 不再是本平台的运行依赖，密集向量与 BM25 都已并入
+> ParadeDB（ADR-0034）。本文件保留为当时做出 ADR-0019 决策的证据记录，**不是当前实现依据**——
+> 照着它重建 Qdrant 适配器会重复一个已经删除的设计。当前依据见
+> `docs/research/paradedb-migration-assessment.md` 与
+> `backend/src/infrastructure/retrieval/pgvector_index.py`。
+
 日期：2026-10-02 · 抓取方式：`Invoke-WebRequest`（PowerShell 7），原始 HTML/文本存于 `.probe/qd/docs/`
 （`.probe/` 已 gitignore）。本文件只记录**官方文档声明**与**本机实测**；凡文档没写的，一律写明“文档未给”，
 绝不用推测值填空。本文件服务于 ADR-0019（业务稠密索引）的实现依据。

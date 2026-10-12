@@ -26,7 +26,7 @@ React + TypeScript + Vite+ (vp CLI), TanStack Router/Query, Base UI, lucide, Tai
 
 - **管理端工作流**：创建法务知识库（如"主服务协议库"、"保密协议模板库"）→ 上传多格式合同文档（PDF/DOCX/TXT/MD/HTML/扫描件）→ 监控摄取任务状态（解析/分块/嵌入/索引）→ 使用检索调试工具验证条款召回质量。
 - **对话端工作流**：选择知识库 → 发起自然语言提问 → 实时接收流式答案 → 查看答案中的引用标记 → 点击引用查看原文位置和上下文。
-- **技术环境**：后端 FastAPI + LangGraph，PostgreSQL 存储业务数据，Qdrant 向量索引，RabbitMQ 任务队列，SSE 实时推送。
+- **技术环境**：后端 FastAPI + LangGraph，ParadeDB（PostgreSQL 18 + pgvector + pg_search）同时承载业务数据、向量索引与 BM25 倒排，RabbitMQ 任务队列，SSE 实时推送。
 
 ## Capabilities and Constraints
 

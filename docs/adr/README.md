@@ -1,12 +1,14 @@
 # Architecture Decision Records
 
 > **关于本文中的 `Evidence:` 与 `RAG_*` 行**：ADR-0001 到 ADR-0032 写作时，平台的验证机制是
-> `scripts/probes/` 下的探针脚本套件，环境变量带 `RAG_` 前缀（`RAG_DATABASE_URL` 等）；两者后来都变了——
-> 探针套件已随展示交付删除，验证入口改为容器路径
-> （`docker compose -f infra/compose.yaml --profile app up -d --build --wait` 加 nginx 入口上的真实响应，
-> 见 `docs/development/testing-strategy.md`），环境变量去掉了前缀（`RAG_DATABASE_URL` 现在就叫
-> `DATABASE_URL`）。旧条目里的路径与前缀保留原文，因为那是做出该决策时的依据；它们在今天读起来是
-> 死链与旧拼写，而不是失效的论证。
+> `scripts/probes/` 下的探针脚本套件，环境变量带 `RAG_` 前缀（`RAG_DATABASE_URL` 等），
+> schema 由 Alembic 迁移（`backend/migrations/`）演进；三者后来都变了——探针套件已随展示交付删除，
+> 验证入口改为容器路径（`docker compose -f infra/compose.yaml --profile app up -d --build --wait`
+> 加 nginx 入口上的真实响应，见 `docs/development/testing-strategy.md`），环境变量去掉了前缀
+> （`RAG_DATABASE_URL` 现在就叫 `DATABASE_URL`），迁移框架也整个去掉了（ADR-0035，schema 改由
+> `python -m cli schema-init` 从 ORM 模型建立）。旧条目里的路径与前缀保留原文，因为那是做出该
+> 决策时的依据；它们在今天读起来是死链与旧拼写，而不是失效的论证——**不要按旧条目里的
+> `backend/migrations/versions/*` 去建迁移，那个目录已经不存在**。
 
 ## ADR-0001: Python 3.12 runtime
 
@@ -16,7 +18,7 @@ Use Python `>=3.12,<3.13` for the first release. The exact maintenance release i
 
 ## ADR-0002: Qdrant is the only vector store, one collection per embedding model
 
-Status: accepted (the LightRAG-isolation half is withdrawn by ADR-0029)
+Status: withdrawn by ADR-0034 (the LightRAG-isolation half was withdrawn earlier by ADR-0029)
 
 Vector search is served by Qdrant and nothing else. Business child-chunk vectors live in their own
 collection, created for one embedding model's width, separate from any other collection of the same
@@ -27,9 +29,13 @@ The original decision also isolated LightRAG's entity/relation/chunk vectors fro
 separate collections and workspaces. That half is withdrawn: the graph channel no longer exists
 (ADR-0029), so there is nothing left to isolate.
 
+The rule that survives the withdrawal is the reason the decision existed: one embedding model, one
+width, one corpus. ADR-0034 keeps it as a fixed `vector(1024)` column and a model-name check constraint
+instead of a collection per model.
+
 ## ADR-0003: PostgreSQL keyword retrieval first
 
-Status: accepted
+Status: accepted (the pg_trgm mechanism is replaced by ADR-0034; the "keyword retrieval lives in PostgreSQL" half stands)
 
 SiliconFlow's documented BGE-M3 endpoint is treated as dense-only. The first keyword channel uses PostgreSQL `pg_trgm`; its quality is evaluated against the final corpus before considering tokenized `tsvector` or an external search engine.
 
@@ -65,7 +71,7 @@ Evidence: `docs/research/probes/live-dependency-contracts.md` (§1d); `docs/rese
 
 ## ADR-0008: Keyword channel uses pg_trgm with LIKE, not the `%` threshold operator
 
-Status: accepted
+Status: withdrawn by ADR-0034
 
 Against the real Chinese corpus, `similarity()` with the `%` operator at the default `pg_trgm.similarity_threshold = 0.3` fails as a pre-filter: the true substring query `知识库检索` scores only `0.2381` and yields no hit, while 2-character CJK queries score `0.0000` (`库检` = `0.0000`, `检索` = `0.0000`) and 4-character mid-string queries stall at `0.4000`, below the `0.6` default `word_similarity_threshold`.
 
@@ -73,7 +79,10 @@ The correct channel is `content LIKE '%q%'`, which keeps exact substring semanti
 
 Recorded here as well: `postgres:18-alpine` does not provide pgvector — `CREATE EXTENSION vector` fails with `extension "vector" is not available` — so Qdrant stays the only vector store (ADR-0002).
 
-Still open from the evidence: recall quality on the final corpus, the final `word_similarity_threshold` value, whether application-side tokenized `tsvector` is needed, and re-measuring index usage at corpus scale (the planner still chose a Seq Scan at 5000 rows).
+The replacement (ADR-0034) answers the same evidence from the other end: BM25 under the default
+`unicode_words` tokenizer splits CJK per ideograph (`保密义务` becomes `保 密 义 务`), so a keyword
+query matches the same characters the `LIKE` channel matched, and the score is a real relevance model
+rather than a similarity value used only for ordering.
 
 Evidence: `docs/research/probes/live-dependency-contracts.md` (§1a, §1b).
 
@@ -889,7 +898,7 @@ becomes a queue). A future scheduled task gets its own process and the `apschedu
 not before.
 
 Evidence: `docs/architecture/system-overview.md`; `docs/operations/local-development.md`;
-`scripts/dev.ps1`; `backend/src/worker/main.py`.
+`scripts/dev.ps1`（已删除，见 ADR-0035）; `backend/src/worker/main.py`.
 
 ## ADR-0025: Per-process connection budgets: one pooled provider client, one sized database pool
 
@@ -945,7 +954,7 @@ bounds concurrent connections, and a cancelled call leaves the client usable);
 
 ## ADR-0026: The schema states the business invariants, and one row owns each fact
 
-Status: accepted
+Status: accepted (the invariants all stand; the Alembic mechanism its evidence describes was removed by ADR-0035)
 
 The business schema, its migrations, the ORM mappings and the real queries were reviewed together
 before this change. Its conclusions are implemented here, and this ADR records the decisions that
@@ -1510,3 +1519,107 @@ The `owner_id` plumbing never left, so the isolation half of the reversal is alr
 Evidence: `backend/src/domain/identity.py`; `backend/migrations/versions/0014_remove_login.py`;
 `backend/src/api/conversations.py`; `scripts/probes/ingestion.ps1`;
 `frontend/src/routes/app-routes.tsx`.
+
+## ADR-0034: ParadeDB replaces Qdrant; dense vectors and BM25 live in the business database
+
+Status: accepted (withdraws the "Qdrant is the only vector store" half of ADR-0002 and the pg_trgm choice of ADR-0008)
+
+Retrieval runs on one database. Child-chunk vectors are a `vector(1024)` column on a new
+`child_chunk_embeddings` table searched by pgvector's native HNSW index; the keyword channel is a
+`pg_search` BM25 index on `child_chunks` instead of a `pg_trgm` GIN index with `LIKE`. The Qdrant
+service, its client dependency, its configuration keys and its readiness probe are gone rather than kept
+behind a switch. Both extensions ship inside the deployment image
+(`paradedb/paradedb:0.26.1-pg18`, digest-pinned), so the distribution is one image and one database.
+
+**Why the earlier decisions no longer hold.** ADR-0002 chose Qdrant because `postgres:18-alpine` has no
+pgvector, and ADR-0008 chose `LIKE` over the `%` threshold operator because trigram similarity is a poor
+pre-filter for CJK. Neither premise survives: the ParadeDB image carries pgvector 0.8.6 and pg_search
+0.26.1 in one PostgreSQL 18, and BM25 is a real relevance model rather than a substring scan with a
+similarity score bolted on for ordering. What the old split bought — independent scaling of a vector
+service — was never used; what it cost was an HTTP write path, a second store to keep in step with the
+business facts, and a deletion race between two systems that a single transaction now makes impossible.
+
+**What stays.** The retrieval pipeline is unchanged in shape: two channels, `ChannelName.dense` /
+`ChannelName.keyword`, application-layer RRF at `k=60` over ranks (cosine scores and BM25 scores are not
+comparable and are never added), the BGE reranker, the evidence gate, parent-child hydration, and the
+citation protocol reading authority from object storage. Replacing a provider does not rename a channel:
+the stable API names the role, not the engine.
+
+**What the database now owns.** Deletion needs no cleanup propagation — `child_chunk_embeddings` cascades
+from `child_chunks`, so a deleted version takes its vectors with it and the cleanup lane's
+`delete_versions` / `delete_knowledge_base` calls become explicit no-ops rather than the load-bearing
+path they were against Qdrant. The vector write is switched from an HTTP upsert to an
+`INSERT ... SELECT` that derives ownership from `child_chunks -> document_versions -> documents` and
+carries the embedding attempt's fence in its `WHERE EXISTS`: an attempt whose lease expired, or whose
+job was re-claimed, matches no rows and writes nothing. Qdrant could not be asked that question, because
+the fence lived in a different system from the vectors.
+
+**What the database now also risks.** ANN is an index scan followed by a `WHERE` filter, so a
+knowledge base that is a small fraction of the table can return fewer than K rows, or none: measured on
+this image, `hnsw.ef_search = 100` with a 1-in-3 tenant filter scanned 3,960 rows and returned zero at a
+1-in-6,000 selectivity. `HNSW_ITERATIVE_SCAN` (default `strict_order`) plus `HNSW_MAX_SCAN_TUPLES` is the
+bounded answer; partition-per-tenant is the unbounded one and is not adopted until a real corpus shows
+the shared index failing. A single database outage now takes down both channels and hydration at once,
+where before only one of them depended on it. And pgvector's HNSW replicates through WAL while pg_search's
+index does not: ParadeDB puts index physical replication in Enterprise/Cloud, so Community HA has to plan
+for an index rebuild, which is a real reduction in retrieval availability that this deployment accepts
+knowingly.
+
+**No vectors are carried over.** The replacement starts empty and is repopulated by re-running the
+embedding stage (`python -m cli reindex <version>` per version, or a fresh ingest). Reading the old
+collection and converting it was rejected: the round trip would need a provenance audit for every point,
+and the corpus is re-embeddable. The old Qdrant volume is a rollback artifact, not a live copy.
+
+**Reversal.** 改回 Qdrant 需要重新引入一个独立向量服务、`QDRANT_*` 配置与 `qdrant-client` 依赖；
+`child_chunk_embeddings` 表改由 `cli schema-reset` 重建，向量靠重跑 embedding 阶段回填。
+向量随表一起丢弃而不保留：它本来就不是权威数据，而旧 Qdrant 卷从未被 ParadeDB 镜像挂载过——
+部署从 Alpine 换到了 Debian，同 major 不是 locale 与 collation 可互换的证据，所以回滚路径同样是
+逻辑备份/恢复，不是换卷。
+
+Evidence: `docs/research/paradedb-migration-assessment.md` (version pins, SQL shapes, S1-S15);
+`backend/src/infrastructure/db/models/chunks.py`;
+`backend/src/infrastructure/retrieval/pgvector_index.py`;
+`backend/src/infrastructure/db/stores/chunk_store.py`.
+## ADR-0035: No migration framework, and no platform-bound tooling
+
+Status: accepted (withdraws the Alembic half of ADR-0026's evidence; the invariants that ADR states all stand)
+
+The schema is the current shape of the ORM models. `python -m cli schema-init` creates the retrieval
+extensions first (`vector`, then `pg_search CASCADE`, because `pg_search` declares `requires = 'vector'`
+and `create_all` cannot create extensions) and then `Base.metadata.create_all` creates whatever tables
+are missing. `python -m cli schema-reset` drops every business table and rebuilds it. Alembic, its
+configuration, the `backend/migrations/` directory and the fourteen revisions it held are gone.
+
+**Why.** This project is pre-production and its schema is still moving. A migration chain's value is
+replaying history onto databases that already hold data somebody cares about; the cost is a file per
+schema change, a downgrade path that has to be written and actually tested, and a `alembic_version`
+row that can drift out of step with the code — a failure mode the earlier architecture review already
+spent a section on, for a database that shipped no data at all. Deleting the chain buys a schema that
+cannot disagree with the models, one command to stand a database up, and no downgrade paths to audit.
+
+**What it costs, stated plainly.** There is no `ALTER`. `create_all(checkfirst=True)` skips a table that
+already exists, so an edited model arrives as *nothing at all* on a database that has the old table —
+not as an error, which is the dangerous part. Development answers that with `schema-reset`. A running
+environment answers it by rebuilding, or by hand-written DDL. Two consequences follow and both are
+accepted: an environment holding data cannot take a schema change without someone writing SQL, and
+`alembic`-style drift detection no longer exists. `/health/ready` therefore checks the tables and both
+retrieval indexes by name — with no migration history to compare against, the readiness probe is the
+only thing standing between "model edited, table not" and retrieval silently returning nothing.
+
+**No platform-bound tooling.** `scripts/check.ps1` and `scripts/dev.ps1` are deleted with nothing put
+in their place, and `.gitattributes` no longer carries a `*.ps1` rule. The deployment target is a Debian
+server, and two script dialects meant the checked path and the deployed path were different programs:
+`check.ps1` ran the gates on Windows while the container path ran on Linux, so a shell-level difference
+could not be seen by either. The gates are now the commands themselves (`uv run ruff…`, `uv run
+pyright…`, `pnpm --dir frontend run check`) and the dev loop is the processes themselves, both written
+out in `AGENTS.md`. Nothing is lost from `dev.ps1` except the process supervision, which is what
+`docker compose` already does and what the four terminal commands do not pretend to do.
+
+**Reversal.** Bringing migrations back means generating a baseline from the current models and adopting
+the databases that exist at that moment — exactly the "squash and stamp" operation the architecture
+review warned is lossy if done silently. Re-adding a `check` script means writing it once, for the
+deployment platform.
+
+Evidence: `backend/src/infrastructure/db/schema.py`; `backend/src/cli/commands/schema.py`;
+`infra/compose.yaml` (the one-shot `schema-init` service every application service waits on);
+`backend/src/infrastructure/probes/postgres_probe.py`.

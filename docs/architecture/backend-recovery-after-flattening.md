@@ -16,7 +16,7 @@ backend/src/
 ├── cli/              # 命令行运维管理工具集
 ├── composition/      # 各进程独立依赖注入组装与生命周期管理
 ├── domain/           # 纯粹领域实体模型、事件与业务规则
-├── infrastructure/   # 外部依赖适配器（数据库、Qdrant、RabbitMQ、S3、模型客户端）
+├── infrastructure/   # 外部依赖适配器（数据库/pgvector、RabbitMQ、S3、模型客户端）
 └── worker/           # Taskiq 异步流水线任务消费循环与调度
 ```
 

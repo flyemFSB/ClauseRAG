@@ -102,7 +102,7 @@ Passage: ...        (命中的子切片切片原文，对应行号区间)
 ## 数据库事务与外部操作边界
 
 1. **短事务原则**：创建文档版本及摄取作业行必须在单一短暂的 PostgreSQL 事务内完成。
-2. **I/O 隔离**：外部文件上传（S3/RustFS）、外部模型调用（PaddleOCR、SiliconFlow）和向量操作（Qdrant）严格禁止包裹在数据库事务中。
+2. **I/O 隔离**：外部文件上传（S3/RustFS）与外部模型调用（PaddleOCR、SiliconFlow）严格禁止包裹在数据库事务中。向量操作已经不需要这条约束——它与业务事实同库，写入是一个事务而不是一段网络 I/O。
 3. **状态单向推进**：流水线每个阶段独立提交事务更新状态与制品指引；RabbitMQ 消息仅在本地事务完全提交后才予以确认（Ack）。
 
 ---
@@ -111,7 +111,7 @@ Passage: ...        (命中的子切片切片原文，对应行号区间)
 
 - 资源归属：`knowledge_bases.owner_id`, `conversations.owner_id`（平台单主体，无账号表；ADR-0033）
 - 知识库与文档：`knowledge_bases`, `documents`, `document_versions`, `parse_artifacts`
-- 切片与制品：`parent_chunks`, `child_chunks`, `cleanup_intents`
+- 切片与制品：`parent_chunks`, `child_chunks`, `child_chunk_embeddings`, `chunk_artifacts`, `cleanup_intents`
 - 任务流水线：`ingestion_jobs`
 - 会话与审查：`conversations`, `messages`
-- LangGraph 检查点表由库独立托管，不纳入业务 Alembic 迁移脚本。
+- LangGraph 检查点表由库独立托管，不纳入业务 ORM 表结构管理。

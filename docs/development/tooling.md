@@ -8,11 +8,11 @@ uv 包管理器 (权威锁定 uv.lock)
 Ruff (代码格式化、导入排序、静态检查)
 Pyright (Strict 严格模式类型推断)
 FastAPI + Pydantic v2
-SQLAlchemy 2.0 (Async) + Alembic
+SQLAlchemy 2.0 (Async) + schema-init CLI (ADR-0035)
 ```
 
 常用命令：
-```powershell
+```bash
 uv sync --locked                     # 依据锁文件极速同步虚拟环境
 uv run ruff check backend/src        # 执行代码规范检查
 uv run ruff format --check backend/src # 检查代码格式化状态
@@ -32,7 +32,7 @@ React 19 + TanStack Router/Query + Base UI + Tailwind v4
 ```
 
 常用命令：
-```powershell
+```bash
 pnpm exec vp check     # 运行格式化、Lint 与 TypeScript 类型检查
 pnpm exec vp dev       # 启动开发服务器（反向代理双端后端）
 pnpm exec vp build     # 生产环境打包构建
@@ -56,8 +56,8 @@ pnpm exec vp test      # 运行测试
 
 静态检查（Ruff / Pyright / 架构方向）与前端 `vp check` / `vp test` 只回答"代码是否自洽"。系统是否真的跑起来由容器路径回答：
 
-```powershell
+```bash
 docker compose -f infra/compose.yaml --profile app up -d --build --wait
 ```
 
-`--wait` 会等四个应用服务 healthy；`migrate` 是一次性容器，负责 `alembic upgrade head`；两个后端进程只在拓扑内部可达，浏览器只与 `rag-web`（默认 http://localhost:5173）通信。宿主开发循环仍然是 `pwsh scripts/dev.ps1`：容器只跑依赖，API/agent/worker 与前端跑在宿主上。
+`--wait` 会等四个应用服务 healthy；`schema-init` 是一次性容器，负责 `python -m cli schema-init`（从 ORM 模型建表并装好检索扩展）；两个后端进程只在拓扑内部可达，浏览器只与 `rag-web`（默认 http://localhost:5173）通信。宿主开发循环没有任何一键脚本：容器只跑依赖（`docker compose up -d --wait`），API/agent/worker 与前端用下面的原生命令跑在宿主上。

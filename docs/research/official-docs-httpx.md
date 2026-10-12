@@ -99,7 +99,7 @@ http client probe passed
 官方文档没有说明“`AsyncClient` 是否必须在其所属事件循环内创建”。锁定版本里 `AsyncClient.__init__`
 只构造 transport / pool 对象，真正的连接在首次请求时建立。
 
-**判定**：不依赖该未声明行为，沿用本仓库已经在 `QdrantChildChunkIndex` 与 `IngestionJobQueue` 里使用的
+**判定**：不依赖该未声明行为，沿用本仓库已经在长连接客户端与 `IngestionJobQueue` 里使用的
 形状——`asyncio.Lock` + 惰性创建 + `close()`：client 在**第一次使用时**创建，因此必然落在将使用它的那个
 事件循环里；一个从不调用该 provider 的进程（例如只跑 parse 的 CLI 命令）不会打开任何连接。CLI 的
 `run_once_async`/`reindex_async` 已经把“同一 runtime 的所有调用和 `close()` 放在同一个 `asyncio.run` 里”
@@ -122,5 +122,5 @@ http client probe passed
 |---|---|---|
 | embeddings / chat / rerank | 每进程一个 pooled client，`close()` 由 runtime 调用 | 官方“no handshaking”，见 §1；一次回答/一次摄取 = 多次调用 |
 | PaddleOCR-VL | **不改** | 它已经在一次 `parse()` 内复用一个 client（提交 + 轮询 + 取结果）；跨文档复用收益远小于其自身的轮询间隔，且 `DocumentParser` 端口没有 `close()`，为它加一个只为 OCR 存在的生命周期会污染另外三个纯本地 parser |
-| Qdrant | **不改** | 已经是官方推荐的 `AsyncQdrantClient` + 惰性连接 + `close()` |
+| Qdrant | **已随 ADR-0034 废弃** | 平台已整体迁移至 ParadeDB / pgvector，不再作为独立 HTTP 服务与客户端依赖 |
 | RustFS/S3 (boto3) | **不改** | boto3 client 自带连接池与 multipart 线程池，已经是长生命周期对象 |

@@ -22,16 +22,18 @@ load_context（加载上下文）
 ## 双通道召回契约与超时隔离
 
 检索服务层并发发起双通道检索，各通道严格设置超时（默认 30 秒）：
-1. **Dense 密集向量通道**：基于 Qdrant 向量数据库，通过 SiliconFlow `BAAI/bge-m3` 向量匹配，召回 Top 30 候选切片。
-2. **Keyword 关键词通道**：基于 PostgreSQL `pg_trgm` 扩展，执行子块正文字符倒排模糊匹配，召回 Top 30 候选切片。
-3. **故障隔离**：单通道超时或异常不中断整体流程；系统记录明确的通道错误类型并在终态予以标记，避免静默降级。
+1. **Dense 密集向量通道**：基于 pgvector 原生 HNSW cosine 索引，通过 SiliconFlow `BAAI/bge-m3` 向量匹配，召回 Top 30 候选切片。内层排序是裸的距离表达式（`ORDER BY embedding <=> :query`），加函数包装会让计划退化为排序全表。
+2. **Keyword 关键词通道**：基于 ParadeDB `pg_search` BM25 索引，对子块正文执行词项匹配（`content ||| :query`）并按 `pdb.score()` 排序，召回 Top 30 候选切片。默认 `unicode_words` 分词器按 CJK 单字切分，因此定义词、条款编号与中英混排均能命中。
+3. **过滤先于截断**：两条 SQL 都把授权知识库与 `status = 'ready'` 写在同一条语句的 LIMIT 之前；严禁先取全库 Top-K 再在应用层筛掉越权命中。
+4. **近似检索的召回缺口是已知的**：pgvector 的 ANN 先扫索引再过滤，候选被滤光时可能拿不满 K 条。`HNSW_EF_SEARCH` 决定初始候选池，`HNSW_ITERATIVE_SCAN` + `HNSW_MAX_SCAN_TUPLES` 在被滤光后继续扩大扫描且保持有界；分区是更大规模才引入的下一步，不预设。
+5. **故障隔离**：单通道超时或异常不中断整体流程；系统记录明确的通道错误类型并在终态予以标记，避免静默降级。
 
 ---
 
 ## 应用层 RRF 融合与重排 (RRF & Rerank)
 
 ### 1. 倒数排名融合 (Reciprocal Rank Fusion)
-消除不同数据库原生分数的量纲差异：
+消除不同索引原生分数的量纲差异（pgvector 为余弦相似度，pg_search 为 BM25 相关性分）：
 $$\text{RRF}(d) = \sum_{c \in \{\text{dense}, \text{keyword}\}} \frac{w_c}{60 + r_c(d)}$$
 默认权重均为 $1.0$，取融合排名前 50 条候选切片进入重排阶段。
 

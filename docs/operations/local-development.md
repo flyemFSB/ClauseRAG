@@ -3,8 +3,7 @@
 ## 本地基础设施拓扑
 
 系统基于 Docker Compose（`infra/compose.yaml`）一键编排底层中间件：
-- **PostgreSQL 16**：存储业务数据、版本、切片、任务流水线事实及 LangGraph 检查点；
-- **Qdrant**：存储子切片密集向量（`rag_child_chunks`）；
+- **ParadeDB（PostgreSQL 18 + pgvector + pg_search）**：存储业务数据、版本、切片、任务流水线事实及 LangGraph 检查点，同时承载 pgvector HNSW 向量索引与 BM25 关键词索引；
 - **RabbitMQ 4**：平台唯一业务异步任务队列；
 - **RustFS / S3**：存储原始文件与不可变解析 Markdown 及切片制品；
 - **Langfuse 栈**（ClickHouse、Web 及 Worker）：提供 LLM 调用与检索追踪（复用外部 PG、Redis 与 RustFS）。
@@ -15,7 +14,7 @@
 
 平台由四个独立边界的进程组成：
 
-```powershell
+```bash
 # 1. 业务 API 服务 (端口 8000: 认证、知识库、文档管理、任务监控)
 uv run python -m api.main
 
@@ -32,15 +31,23 @@ pnpm exec vp dev
 
 ---
 
-## 一键式开发循环脚本 (dev.ps1)
+## 本地开发循环
 
-推荐使用根目录 PowerShell 便捷脚本管理本地开发进程（支持容器与应用进程联动）：
+仓库不再提供平台绑定的便捷脚本：最终部署目标是 Debian 服务器，`.ps1`/`.bat` 之类的资产一律不进仓库。开发循环用下面这几条原生命令，在 Debian 与 Windows（Git Bash / WSL）上完全一致：
 
-```powershell
-pwsh -NoProfile -File scripts/dev.ps1            # 启动容器 + 后端三进程 + 前端开发服务
-pwsh -NoProfile -File scripts/dev.ps1 -NoWorker  # 纯前端 UI 调试模式：不启动流水线 Worker
-pwsh -NoProfile -File scripts/dev.ps1 -NoFrontend# 仅启动后端多进程
-pwsh -NoProfile -File scripts/dev.ps1 -Stop      # 安全停止本轮脚本启动的所有进程树
+```bash
+# 1. 只起基础设施（PostgreSQL/ParadeDB、RabbitMQ、RustFS 等）
+docker compose -f infra/compose.yaml up -d --wait
+
+# 2. 首次或改了模型后建表（幂等；改过模型要用 schema-reset，它会先清空）
+uv run python -m cli schema-init
+uv run python -m cli storage-init
+
+# 3. 三个后端进程与前端各自起在一个终端里
+uv run python -m api.main            # 业务 API (8000)
+uv run python -m agent_runtime.main  # Agent 运行时 (8001)
+uv run python -m worker.main         # 摄取流水线 Worker
+pnpm --dir frontend run dev          # 前端 dev server (5173，反代两个后端)
 ```
 
 ---
@@ -49,8 +56,11 @@ pwsh -NoProfile -File scripts/dev.ps1 -Stop      # 安全停止本轮脚本启�
 
 平台不开放登录，因此也没有账号开通步骤（ADR-0033）：首次启动只需要初始化环境。
 
-```powershell
-# 1. 初始化对象存储存储桶 (幂等操作)
+```bash
+# 1. 从 ORM 模型建表并装好检索扩展（幂等，不碰已有数据）
+uv run python -m cli schema-init
+
+# 2. 初始化对象存储存储桶 (幂等操作)
 uv run python -m cli storage-init
 
 # 2. 初始化 Langfuse 数据库与存储桶 (幂等操作)
@@ -60,10 +70,10 @@ uv run python -m cli observability-init
 uv run python -m cli run-stage parse <document_version_id>
 uv run python -m cli run-stage chunk <document_version_id>
 
-# 4. 手动执行挂起的清理意图 (清理物理对象与向量索引)
+# 4. 手动执行挂起的清理意图 (清理物理对象；向量已随子块级联删除，这里的向量删除是显式幂等补充)
 uv run python -m cli cleanup-pending --limit 50
 
-# 5. 重新执行向量化与索引构建
+# 5. 重新执行向量化与索引构建（这也是把旧语料重新填进 pgvector 的路径）
 uv run python -m cli reindex <document_version_id>
 
 # 6. 查看当前编译的 Agent 状态图节点与边拓扑
@@ -76,24 +86,28 @@ uv run python -m cli graph-topology
 
 平台不再有探针脚本套件（`scripts/probes/`、`smoke.ps1`、`e2e-final.ps1`、`doctor.ps1` 已随本次交付删除）。验证分两层，第二层是唯一的运行时证据：
 
-```powershell
+```bash
 # 1. 静态门禁（必须 100% 通过）
-./scripts/check.ps1
+uv sync --locked --group eval
+uv run ruff check backend/src
+uv run ruff format --check backend/src
+uv run pyright backend/src
+uv run python scripts/check-architecture.py
 pnpm --dir frontend run check
 pnpm --dir frontend run test
 
 # 2. 运行时验收（全栈）
 docker compose -f infra/compose.yaml --profile app up -d --build --wait
-Invoke-WebRequest http://localhost:5173/health/ready
-Invoke-WebRequest http://localhost:5173/api/v1/config
+curl -fsS http://localhost:5173/health/ready
+curl -fsS http://localhost:5173/api/v1/config
 ```
 
-`--wait` 等 `api`、`agent`、`worker`、`web` 全部 healthy；`migrate` 幂等且只跑一次。看日志用 `docker compose -f infra/compose.yaml logs -f rag-api`；停栈用同命令的 `down`（去掉 `-v` 以免连数据卷一起删）。
+`--wait` 等 `api`、`agent`、`worker`、`web` 全部 healthy；`schema-init` 幂等且只跑一次。看日志用 `docker compose -f infra/compose.yaml logs -f rag-api`；停栈用同命令的 `down`（去掉 `-v` 以免连数据卷一起删）。
 
 
 ## 异常任务排查与状态恢复原则
 
-1. **唯一事实源**：PostgreSQL 与 RustFS 存储权威事实，Qdrant 可依据切片和嵌入模型随时重建。
+1. **唯一事实源**：PostgreSQL 与 RustFS 存储权威事实；向量与 BM25 索引都是同一库内可重建的派生数据，超过则通过重建阶段重新生成。
 2. **卡顿任务恢复**：
    - 当 Worker 进程意外崩溃导致任务停滞在 `running` 状态时，后台调度器会在超出 `JOB_STALE_AFTER_SECONDS` 后自动回收租约并重新投递；
    - 亦可通过接口或界面主动发起重试：
@@ -101,7 +115,7 @@ Invoke-WebRequest http://localhost:5173/api/v1/config
      curl -X POST "http://127.0.0.1:8000/api/v1/document-versions/{version_id}/retry"
      ```
 3. **阶段失败恢复**：若任务处于 `chunk_failed` 或 `index_failed`，可使用运维 CLI 针对该阶段单独重跑：
-   ```powershell
+   ```bash
    uv run python -m cli run-stage chunk <document_version_id>
    uv run python -m cli reindex <document_version_id>
    ```

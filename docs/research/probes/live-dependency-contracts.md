@@ -9,9 +9,9 @@
 探针容器统一前缀 `ragprobe-`，端口 `55xxx/56xxx/59xxx`；本轮结束时已 `docker rm -f` 全部删除，
 `docker ps -a` 计数为 0，5 个镜像保持原样。
 
-> **后续变更（ADR-0029）**：文中 LightRAG 相关的隔离验证（`lightrag` collection、
-> `lrag-*` payload、图谱自管表边界）随图谱通道一并删除；ADR-0002 与 ADR-0012 已因此改标。
-> 其余依赖契约（pg_trgm、RabbitMQ/Taskiq、Qdrant、RustFS）仍为当前事实。
+> **后续变更（ADR-0029 / ADR-0034）**：文中 LightRAG 相关的隔离验证随图谱通道一并删除（ADR-0029）；
+> Qdrant 与 pg_trgm 亦已随 ADR-0034 废弃并统一迁移至 ParadeDB（pgvector HNSW 密集向量 + pg_search BM25 词项检索）。
+> 本文保留为当时的底层依赖实测历史记录。
 
 ## 0. 探针环境
 

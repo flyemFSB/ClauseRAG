@@ -20,7 +20,7 @@
 在系统工程层面，ClauseRAG 采用模块高内聚、依赖单向分层的领域驱动设计（DDD）：
 1. **多源异构解析**：自适应路由 Office、HTML、TXT 及基于 PaddleOCR-VL 的扫描件版面解析；
 2. **Parent-Child 分块树**：小块子切片负责精准命中与引用锚定，大块父切片负责保留完整商业合同条款上下文；
-3. **双通道混合召回**：Qdrant 密集向量与 PostgreSQL `pg_trgm` 关键词匹配并行检索；
+3. **双通道混合召回**：pgvector 密集向量与 pg_search BM25 词项匹配并行检索，两者同处一个 PostgreSQL；
 4. **应用层 RRF 与重排序**：解耦底层异构存储，由应用层执行倒数排名融合（RRF）与 BGE-Reranker-v2-m3 精排；
 5. **动态证据门控（Evidence Gate）**：基于质量阈值划分证据等级（`sufficient` / `degraded` / `insufficient`），支持有界查询改写，证据不足时主动弃答；
 6. **双工作区前端交互**：隔离商业合同审查问答与法务资产运维管理场景，集成代际栅栏（Generation Fence）杜绝过时异步请求竞态污染。
@@ -96,8 +96,8 @@
 ┌───────────────────────┐          ┌──────────────────────────┐          ┌────────────────────────┐
 │  RabbitMQ 消息队列    │─────────>│  Taskiq Worker 后台集群  │─────────>│   外部存储与大模型     │
 │  - 摄取调度           │          │  - PaddleOCR / AnyDoc    │          │   - SiliconFlow API    │
-│  - 异步清理通道       │          │  - 分块生成与向量构建    │          │   - PostgreSQL 16      │
-└───────────────────────┘          │  - 向量索引与检索       │          │   - Qdrant 向量库      │
+│  - 异步清理通道       │          │  - 分块生成与向量构建    │          │   - ParadeDB/PostgreSQL│
+└───────────────────────┘          │  - 向量索引与检索       │          │     (pgvector + pg_search) │
                                    └──────────────────────────┘          │   - RustFS / S3 存储   │
                                                                          │   - Langfuse 观测平台  │
                                                                          └────────────────────────┘
@@ -110,7 +110,7 @@
 | **API 服务** | `python -m api.main` | 承接客户端 HTTP 请求、轻量级元数据读写、SSE 长连接事件推流。 | Uvicorn AsyncIO |
 | **Agent 运行时** | `python -m agent_runtime.main` | 托管 LangGraph 有界图执行引擎、意图分类、多通道并发检索触发、流式 Delta 产出。 | LangGraph Checkpointer + AsyncIO |
 | **Worker 消费进程** | `python -m worker.main` | 消费 RabbitMQ 队列；运行重型计算（OCR 解析、分块聚类、Embedding 批处理、物理资源清理）。 | Taskiq Async Worker |
-| **CLI 运维套件** | `python -m cli` | 运行数据库迁移排查、拓扑结构打印、环境探针诊断与数据备份导入。 | 同步/异步 CLI 管道 |
+| **CLI 运维套件** | `python -m cli` | schema 建立与重建、对象存储初始化、单阶段摄取重跑、清理与评测。 | 同步/异步 CLI 管道 |
 | **Web 前端** | `vp dev` / `vp preview` | 双工作区 UI、TanStack 缓存维护、代际栅栏防竞态、行内 Markdown 渲染与 Popover 溯源。 | Single-Page Application (SPA) |
 
 ---
@@ -129,7 +129,7 @@
 传统固定长度滑动窗口会撕裂合同法律条款上下文。ClauseRAG 实施两级树状切分：
 - **Child Chunks（子块）**：
   - 长度限制：256–512 tokens，重叠 32 tokens。
-  - 用途：计算 BGE-M3 向量嵌入、录入 Qdrant 集合、构建 PostgreSQL `pg_trgm` 倒排索引用作**检索与条款引用锚点**。
+  - 用途：计算 BGE-M3 向量嵌入写入 `child_chunk_embeddings`（pgvector HNSW）、构建 `child_chunks` 的 pg_search BM25 索引，作为**检索与条款引用锚点**。
   - 元数据记录：所属文档版本 ID、父块 ID、标题/条款路径（`heading_path`）、Markdown 绝对行号（`line_start`–`line_end`）。
 - **Parent Chunks（父块）**：
   - 长度限制：1024–2048 tokens。
@@ -137,9 +137,9 @@
 
 ```text
 [Parent Chunk 1: Article 8 - Limitation of Liability (Tokens: 1250, Line: 1-68)]
-   ├── [Child Chunk 1-1: 8.1 责任上限总额限制 (Tokens: 380, Line: 1-22)]  --> 写入 Qdrant & PG
-   ├── [Child Chunk 1-2: 8.2 间接与附带损失免责 (Tokens: 410, Line: 20-45)] --> 写入 Qdrant & PG
-   └── [Child Chunk 1-3: 8.3 重大过失与保密除外条款 (Tokens: 460, Line: 42-68)]   --> 写入 Qdrant & PG
+   ├── [Child Chunk 1-1: 8.1 责任上限总额限制 (Tokens: 380, Line: 1-22)]  --> 写入 PG（正文/坐标 + 向量 + BM25）
+   ├── [Child Chunk 1-2: 8.2 间接与附带损失免责 (Tokens: 410, Line: 20-45)] --> 写入 PG（正文/坐标 + 向量 + BM25）
+   └── [Child Chunk 1-3: 8.3 重大过失与保密除外条款 (Tokens: 460, Line: 42-68)]   --> 写入 PG（正文/坐标 + 向量 + BM25）
 ```
 
 ---
@@ -151,9 +151,9 @@
 ```text
 用户查询 (Query)
    │
-   ├─► [Dense 通道]  ───► Qdrant 向量库 (BGE-M3, 1024维) ──────────► Top-30 子块候选
+   ├─► [Dense 通道]  ───► PG child_chunk_embeddings (HNSW cosine) ───► Top-30 子块候选
    │
-   └─► [Keyword 通道] ──► PostgreSQL pg_trgm 字符倒排索引 ────────► Top-30 子块候选
+   └─► [Keyword 通道] ──► PG child_chunks (pg_search BM25 倒排) ────► Top-30 子块候选
                                                                          │
                                                                          ▼
                                                      [应用层 Reciprocal Rank Fusion (RRF)]
@@ -166,7 +166,7 @@
 ```
 
 #### 应用层 RRF 融合公式
-不同底层数据库的原始分值不可比（Qdrant 为余弦相似度，PostgreSQL 为 trigram 匹配度）。应用层依据统一的倒数排名融合算法消除量纲差异：
+不同底层索引的原始分值不可比（pgvector 为余弦相似度，pg_search 为 BM25 相关性分）。应用层依据统一的倒数排名融合算法消除量纲差异：
 
 $$\text{RRFScore}(d) = \sum_{c \in \{\text{dense}, \text{keyword}\}} \frac{w_c}{k + r_c(d)}$$
 
@@ -257,9 +257,9 @@ event: run_completed   --> {"answer": "...", "citations": ["S1"], "evidence_stat
 | **主体与资源归属** | PostgreSQL | `knowledge_bases.owner_id`、`conversations.owner_id`；平台以展示为目的上线，无账号表（ADR-0033）。 | 关系型持久化，事务保证。 |
 | **知识库与文档版本** | PostgreSQL | `knowledge_bases`, `documents`, `document_versions`。 | 软状态追踪；文档版本采用自增单调修订号。 |
 | **原始文件与中间制品** | RustFS / S3 | `raw_files/`, `parse_artifacts/` 桶内不可变对象。 | 文件上传后只读写入；删除文档时生成异步清理意图。 |
-| **切片索引树** | PostgreSQL | `parent_chunks`, `child_chunks` 表；记录标题路径与行号。 | 关系型存储，支撑级联溯源与 `pg_trgm` 关键词匹配。 |
-| **业务向量集合** | Qdrant | Collection: `rag_child_chunks`（1024 维余弦向量）。 | 由 Worker 批量向量化后插入；携带 `document_version_id` Payload。 |
-| **父子块与向量** | Qdrant + PG | 子块向量存于 Qdrant，坐标与正文存于 PostgreSQL。 | 向量检索与权威行号校验各自使用最合适的存储。 |
+| **切片索引树** | PostgreSQL | `parent_chunks`, `child_chunks` 表；记录标题路径与行号；`pg_search` BM25 索引支撑关键词召回。 | 关系型存储，支撑级联溯源与词项匹配。 |
+| **业务向量表** | PostgreSQL | `child_chunk_embeddings`（`vector(1024)` 列 + HNSW cosine 索引），一行对应一个子块。 | 由 Worker 分批写入；`knowledge_base_id` 由权威表推导，子块删除时级联。 |
+| **父子块与向量** | PostgreSQL | 向量、坐标与正文同库同事务，但分属不同表。 | 向量只用于命中；行号与正文每次回表读取，不给引用坐标留可漂移的副本。 |
 | **会话与检查点** | PostgreSQL | `conversations`, `messages`, LangGraph checkpoint 表。 | 保证故障恢复与跨轮次记忆回溯。 |
 | **异步任务状态** | PostgreSQL | `ingestion_jobs`（含 `not_before`、`lease_expires_at`、`dispatched_at`）。 | 作业行是投递与重试的唯一契约；RabbitMQ 只负责唤醒。 |
 
@@ -324,7 +324,7 @@ event: run_completed   --> {"answer": "...", "citations": ["S1"], "evidence_stat
   - 生产日志仅记录 UUID 标识符与关键耗时指标。
 
 ### 6.2 可靠性、并发与容错 (Reliability & Concurrency)
-- **显式超时边界**：所有对外部 API（SiliconFlow、Qdrant、RabbitMQ、S3）的调用必须显式设置超时（HTTP 默认 10s，检索通道 30s，重型解析 900s），严禁无限阻塞。
+- **显式超时边界**：所有对外部 API（SiliconFlow、RabbitMQ、S3）的调用必须显式设置超时（HTTP 默认 10s，检索通道 30s，重型解析 900s），严禁无限阻塞；数据库内的 ANN 检索用 `hnsw.max_scan_tuples` 给出同样的上界。
 - **保护异步取消链**：Python 异步任务严禁吞没 `asyncio.CancelledError`，确保当客户端主动断开连接时，后方的线程与计算资源能够被操作系统即时回收。
 - **禁止跨协程共享 AsyncSession**：每个异步任务/请求独立获取 SQLAlchemy `AsyncSession` 上下文，彻底杜绝连接状态污染与死锁。
 - **有界重试与抖动退避**：后台任务仅对明确分类的网络抖动或提供商 503 进行有限重试（最多 3 次），重试间隔引入随机抖动（Jitter），防止惊群效应（Thundering Herd）。
@@ -337,23 +337,24 @@ event: run_completed   --> {"answer": "...", "citations": ["S1"], "evidence_stat
 - **已知缺口**：没有 `/metrics` 与告警。健康检查只能回答"此刻能不能用"，回答不了错误率、延迟分位与队列积压趋势。补法：应用侧用 `prometheus-client` 暴露 `/metrics`（counter/gauge/histogram），Prometheus 按间隔拉取，Grafana 出面板，Alertmanager 对错误率、p95 延迟、`pending` 任务积压与模型调用失败率告警。
 ## 7. Alternatives Considered & Trade-offs
 
-### 7.1 为什么采用应用层 RRF，而非单数据库混合搜索？
-- **考量方案**：直接使用单个数据库（如 PostgreSQL pgvector + pg_trgm，或 Qdrant 内置 hybrid search）。
-- **决策理由**：涉美商业合同审查场景下，通用向量数据库的文本语义匹配能力无法完全覆盖法律术语的精确同义检索。将 Qdrant（密集向量高吞吐）与 PostgreSQL（元数据与精确匹配）分离，并通过应用层 RRF 融合，可以保持各组件的纯粹性，允许独立水平扩展与独立升级，避免单点技术栈绑定。
+### 7.1 为什么仍用应用层 RRF，而不用数据库自带的混合搜索？
+- **考量方案**：把融合下推到数据库（pgvector + pg_search 的混合查询，或 ParadeDB 自身的向量索引），或退回两个独立检索系统。
+- **决策理由**：向量与 BM25 现在确实同库，但**分值仍然不可比**：余弦相似度与 BM25 相关性分不在同一量纲上，相加需要一个不成文的权重，而那个权重没有任何在真实合同语料上的标定依据。RRF 只用名次，对分数量纲免疫，也不把应用层的门控、重排与引用校验拆到两个地方。与此同时，融合留在应用层意味着换检索引擎不动检索语义——本次从 Qdrant + pg_trgm 换成 pgvector + BM25 时，通道名、RRF 常数与门控阈值一行未改。代价是多一次网络往返与一份需要自己写的融合代码，这是已知且可接受的。
 
 ### 7.2 为什么使用 RabbitMQ，坚决不使用 Redis 作为队列？
 - **考量方案**：使用 Redis List / Streams 作为后台任务队列。
 - **决策理由**：Redis 是基于内存的缓存存储，在机器宕机或内存压力下容易发生数据淘汰（Eviction）或持久化丢包。RabbitMQ 具备完备的死信队列（DLX）、消息持久化确认（Message Acknowledgement）、排他消费与背压（Prefetch）机制，能够确切保证文档摄取任务“不丢失、不重复执行”。
 
 ### 7.3 为什么用真实容器验收，而不是大面积 Mock 单元测试？
-Mock 单测能证明"我按自己理解的方式调用了依赖"，证明不了"PostgreSQL 真的接受了这条约束、Qdrant 真的把这条向量检索出来、RabbitMQ 真的把这条消息送达了"。本平台的业务不变量恰恰长在那些边界上：复合外键、行号坐标、门控阈值、租约认领、引用回表。
+Mock 单测能证明"我按自己理解的方式调用了依赖"，证明不了"PostgreSQL 真的接受了这条约束、pgvector 真的把这条向量检索出来、RabbitMQ 真的把这条消息送达了"。本平台的业务不变量恰恰长在那些边界上：复合外键、行号坐标、门控阈值、租约认领、引用回表。
 
 因此验证集中在容器路径上：镜像构建 → 一次性迁移 → 四个服务 healthy → nginx 单一入口上的真实响应 → 一次真实问答。代价是需要真实外部服务与更长的反馈周期；收益是"检查通过"与"上线能用"之间的距离更短。平台不保留探针脚本套件，避免留下一套只在自己机器上通过的测试资产。
 ## 8. Testing & Verification Strategy
 两层：静态门禁（Ruff / format / Pyright strict / 架构方向 / goldenset 可复现性）保证代码自洽；运行时验收（`docker compose -f infra/compose.yaml --profile app up -d --build --wait` + `/health/ready` + `/api/v1/config` + 一次真实问答）保证系统可用。完整命令与各自能证明什么，见 `docs/development/testing-strategy.md`。没有第三层，也没有探针脚本。
 ## 9. Rollout, Migration & Deprecation Strategy
 
-- **数据库迁移**：使用 Alembic 进行结构化模式管理。迁移脚本必须前向与后向兼容；
+- **数据库 schema**：项目处于开发阶段，**不使用迁移框架**。schema 就是 ORM 模型的当前形状，由 `python -m cli schema-init`（容器路径下是一次性 `schema-init` 服务）显式建出：先 `CREATE EXTENSION vector` / `pg_search CASCADE`，再 `Base.metadata.create_all`。`schema-init` 只建不缺，对已有数据无副作用；改模型后用 `python -m cli schema-reset`（先 `drop_all` 再建，破坏性）。代价是没有 ALTER：`create_all` 跳过已存在的表，所以模型与真实数据库不一致只能靠重建或手工 DDL 修——这正是 `/health/ready` 要独立核对表与两个检索索引的原因。详见 ADR-0035；
+- **扩展与向量存储迁移**：向量与 BM25 都位于业务库内，因此它们的可用性由 `/health/ready` 的数据库一项一并回答：探针不只测连通性，还核对 `vector` / `pg_search` 扩展、`child_chunk_embeddings` 表与 HNSW / BM25 两个索引是否就位。缺失时 readiness 返回 503 而不是让检索静默返回空；
 - **临时兼容与双写标记**：严禁无理由保留长期双写。若因数据平滑迁移必须存在临时双写，代码处必须注明：
   ```python
   # ponytail: migration until M<version> (#TICKET-ID)

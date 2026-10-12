@@ -29,13 +29,13 @@
 - 实现感知 Markdown 标题树与段落边界的两级切分引擎；
 - 建立 PostgreSQL `parent_chunks` 与 `child_chunks` 存储关系；
 - 接入 SiliconFlow `BAAI/bge-m3` 向量嵌入生成（1024 维）；
-- 构建 Qdrant `rag_child_chunks` 独立集合、Payload 索引及版本原子替换。
+- 构建 `child_chunk_embeddings` 表、pgvector HNSW cosine 索引与 pg_search BM25 索引，并实现版本向量核验与写入门控。
 
 ---
 
 ## Phase 4：Agentic RAG 检索与有界状态机推理
 - 构建 LangGraph 有界 Agent 状态图（最多 2 轮改写重试）；
-- 实现 Dense 密集向量与 PostgreSQL `pg_trgm` 关键词双通道并发检索；
+- 实现 pgvector Dense 密集向量与 pg_search BM25 关键词双通道并发检索；
 - 应用层 RRF 倒数排名融合与 SiliconFlow `BAAI/bge-reranker-v2-m3` 精排；
 - 接入动态证据门控（`sufficient` / `degraded` / `insufficient`）与主动弃答机制；
 - 落地端到端引用强校验协议与 SSE 流式推流。
@@ -53,7 +53,7 @@
 - 实现合同审查工作区（审查岛屿、流式打字机、引用 Popover 与证据检视台）；
 - 实现法务资产管理台（知识库概览、文档流水线监控、单轮检索诊断调试、系统设置）；
 - 落地前端代际栅栏（Generation Fence），杜绝异步竞态；
-- 交付 `scripts/dev.ps1` 便捷本地协同开发脚本与运维 CLI。
+- 交付运维 CLI（`schema-init` / `schema-reset` / `storage-init` / `reindex` 等）作为本地与部署的统一入口。
 
 ---
 

@@ -178,7 +178,7 @@ RAGAS 的完整接入、document scope、运行时 trace、指标分层、成本
 | `evals/cuad/build-report.json` | 抽样种子、输入/输出 checksum、category 分布、语料覆盖率、偏差与已知边界 |
 | `evals/routing/contrast.jsonl` | 人工维护的两类路由对照样本 |
 
-```powershell
+```bash
 # 构建（写入三个文件）、校验（重算并与已提交产物逐字节对比，不写入）
 uv run python scripts/build-goldenset.py
 uv run python scripts/build-goldenset.py --verify

@@ -68,7 +68,7 @@
 - **异步安全与会话管理**：
   - 严禁跨并发任务共享同一个 SQLAlchemy `AsyncSession`；
   - 严格保护取消链，**绝对禁止吞没 `asyncio.CancelledError`**；
-  - 所有外部 I/O（HTTP 请求、Qdrant 调用、消息分发、S3 操作）必须设置**显式有界超时**，禁止无限等待；
+  - 所有外部 I/O（HTTP 请求、模型服务、消息分发、S3 操作）必须设置**显式有界超时**，禁止无限等待；
   - 重试必须有限度，且仅针对已分类的瞬态失败（如网络超时、503 临时不可用），禁止对确定性业务错误（如 400、422）重试。
 - **状态与消息队列**：
   - PostgreSQL 是系统唯一的事实真相来源（Single Source of Truth）；
@@ -78,7 +78,7 @@
 ### 3.2 架构分层与依赖方向 (Layering & Imports)
 - **严格依赖顺序**：
   $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
-- `domain` 严禁导入 FastAPI、SQLAlchemy、Qdrant、LangChain、RabbitMQ 或 S3 等任何外部依赖；
+- `domain` 严禁导入 FastAPI、SQLAlchemy、pgvector、ParadeDB、LangChain、RabbitMQ 或 S3 等任何外部依赖；
 - `infrastructure` 实现 `application` 与 `domain` 定义的端口协议；
 - `worker` 仅能通过调用 `application` 层的用例服务来执行业务逻辑，严禁在 Worker 中复制或重写领域规则；
 - `composition` 负责各进程具体实例的依赖注入组装；
@@ -97,12 +97,13 @@
 - **视觉契约**：严格遵循 `DESIGN.md` 中定义的视觉规范（中性灰阶、等宽数字 `tabular-nums`、对比度 $\ge 4.5:1$、Popover 权威溯源交互）。
 
 ### 3.4 RAG 检索与生成核心规范 (RAG Correctness)
-- **存储隔离**：业务切片数据必须使用独立 Qdrant Collection，不得与任何派生索引共用集合。
-- **双通道与 RRF 融合**：由应用层显式执行 Reciprocal Rank Fusion（$k=60$），统一对齐 Qdrant（Dense）与 PostgreSQL（Keyword）候选结果。
+- **存储就地隔离**：业务切片向量存于 PostgreSQL `child_chunk_embeddings` 表（pgvector 原生 `vector` 列 + HNSW cosine 索引），与业务事实同库同事务；不得把向量写回任何独立向量服务，也不得与派生索引/观测数据共用同一张表。
+- **双通道与 RRF 融合**：由应用层显式执行 Reciprocal Rank Fusion（$k=60$），统一对齐 pgvector（Dense）与 pg_search BM25（Keyword）候选结果；两类分数量纲不可比，只融合名次，不得直接相加。
 - **Parent-Child 双层锚定**：
   - Child Chunks 仅用于检索匹配与 Citation 坐标锚定；
   - Parent Chunks 聚合完整标题与段落语义，仅用于拼装大模型生成的回答上下文。
 - **权威引用校验**：后端必须校验大模型输出的每一个引用标记（如 `[S1]`），严格对照本次门控通过的候选切片，解析权威对象存储中的真实行号区间与原文，严禁透传虚构引用。
+- **写入门控在数据库内比对**：向量写入必须与状态写入在同一事实源上比对 job、attempt 与租约；不得只在收尾状态写入时检查（事后检查挡不住一个租约已过期、却比新尝试更早提交向量的旧任务）。
 
 ---
 
@@ -110,20 +111,37 @@
 
 1. **验证只有两个层次，没有第三层**：静态门禁回答"代码是否自洽"，容器路径回答"系统是否真的跑起来"。后者是唯一的运行时证据：平台不再有探针脚本套件（已于本次交付删除），任何"跑通了"的说法都必须指向下面第 2 或第 3 条的实际输出。
 2. **静态门禁（每次改动后必须 100% 通过）**：
-   ```powershell
-   pwsh scripts/check.ps1        # uv sync --locked --group eval + Ruff + Ruff format + Pyright strict + 入口导入 + 架构方向 + goldenset
-   pnpm --dir frontend run check # 格式化 + lint + 类型
-   pnpm --dir frontend run test  # 前端纯逻辑测试
+   ```bash
+   uv sync --locked --group eval   # 依赖锁定同步
+   uv run ruff check backend/src
+   uv run ruff format --check backend/src
+   uv run pyright backend/src      # Strict 模式
+   uv run python -c "import api.main, agent_runtime.main, worker.main, cli.main"
+   uv run python scripts/check-architecture.py
+   uv run python scripts/build-goldenset.py --verify
+   pnpm --dir frontend run check
+   pnpm --dir frontend run test
    ```
 3. **运行时验收（全栈唯一入口）**：
-   ```powershell
+   ```bash
    docker compose -f infra/compose.yaml --profile app up -d --build --wait
    ```
-   它一次性做完：构建后端/前端镜像、跑一次性 `migrate` 迁移、起 API/agent/worker/web 四个服务并等它们 healthy；随后通过 nginx 单一入口核对真实行为：
-   ```powershell
-   Invoke-WebRequest http://localhost:5173/health/ready      # 逐依赖就绪（503 表示依赖不可用）
-   Invoke-WebRequest http://localhost:5173/api/v1/config     # 本进程实际生效的配置
+   它一次性做完：构建后端/前端镜像、跑一次性 `schema-init` 从模型建模、起 API/agent/worker/web 四个服务
+   并等它们 healthy；随后通过 nginx 单一入口核对真实行为：
+   ```bash
+   curl -fsS http://localhost:5173/health/ready      # 逐依赖就绪（503 表示依赖不可用）
+   curl -fsS http://localhost:5173/api/v1/config     # 本进程实际生效的配置
    ```
-   验收结论以这些响应的原文为准；需要人看的检查（引用是否指向真实条款、SSE 是否逐帧到达）在浏览器里用真实文档做一遍，不允许用"静态检查通过"替代。
-4. **本地开发循环**（改代码看效果，不重建镜像）：`pwsh scripts/dev.ps1`（容器只跑依赖，三个进程与前端跑在宿主上）；用完 `pwsh scripts/dev.ps1 -Stop`。
-5. **Git 提交信息规范**：遵循 Conventional Commits（`feat:`, `fix:`, `refactor:`, `test:`, `docs:`），提交说明必须详实陈述改动原因、设计考虑与验证结果。
+   验收结论以这些响应的原文为准；需要人看的检查（引用是否指向真实条款、SSE 是否逐帧到达）在浏览器里用真实文档做一遍，不允许用“静态检查通过”替代。
+4. **本地开发循环**（改代码看效果，不重建镜像）：容器只跑依赖，三个进程与前端跑在宿主上。
+   ```bash
+   docker compose -f infra/compose.yaml up -d --wait            # 只起基础设施
+   uv run python -m cli schema-init                             # 首次或改了模型后
+   uv run python -m cli storage-init
+   uv run python -m api.main & uv run python -m agent_runtime.main & uv run python -m worker.main &
+   pnpm --dir frontend run dev
+   ```
+   改了模型结构时用 `uv run python -m cli schema-reset`（破坏性：先删表再建表，现有数据会全部丢失）。
+5. **禁止 Windows 专用资产**：最终部署目标是 Debian 服务器，仓库不保留 `.ps1`/`.bat`/`.cmd` 之类的
+   平台绑定脚本；自动化要么进 `docker compose`，要么是可移植的 Python/Shell。
+6. **Git 提交信息规范**：遵循 Conventional Commits（`feat:`, `fix:`, `refactor:`, `test:`, `docs:`），提交说明必须详实陈述改动原因、设计考虑与验证结果。
