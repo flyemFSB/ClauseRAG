@@ -20,8 +20,7 @@ const MODELS: readonly ConfigRow[] = [
   {
     name: "向量维度",
     env: "EMBEDDING_DIMENSION",
-    detail:
-      "集合就是按它创建的：换模型必须换维度，因此也换一个集合重建，而不是往旧集合里混入别的宽度。",
+    detail: "子块向量表依据此维度创建；更换模型需重建整个语料。",
   },
   {
     name: "生成模型",
@@ -142,9 +141,19 @@ const GENERATION: readonly ConfigRow[] = [
 
 const VECTORS: readonly ConfigRow[] = [
   {
-    name: "向量集合",
-    env: "QDRANT_COLLECTION",
-    detail: "业务子块的集合名。",
+    name: "HNSW 召回候选池",
+    env: "HNSW_EF_SEARCH",
+    detail: "pgvector 近似检索展开的候选集大小（ef_search）。",
+  },
+  {
+    name: "HNSW 扩扫模式",
+    env: "HNSW_ITERATIVE_SCAN",
+    detail: "候选被 WHERE 过滤后扩大检索的迭代扫描模式。",
+  },
+  {
+    name: "HNSW 扩扫上界",
+    env: "HNSW_MAX_SCAN_TUPLES",
+    detail: "单轮迭代扩扫最多访问的元组行数上限。",
   },
 ];
 
@@ -179,7 +188,7 @@ export function ModelConfigPage(): ReactNode {
         <ConfigGroup title="召回与上下文预算" rows={BUDGET} config={config.data} />
         <ConfigGroup title="融合与证据门控" rows={FUSION} config={config.data} />
         <ConfigGroup title="生成与引用" rows={GENERATION} config={config.data} />
-        <ConfigGroup title="向量集合" rows={VECTORS} config={config.data} />
+        <ConfigGroup title="向量检索（pgvector HNSW）" rows={VECTORS} config={config.data} />
       </div>
     </div>
   );

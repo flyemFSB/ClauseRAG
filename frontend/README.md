@@ -49,19 +49,20 @@ src/
 
 ## 开发与校验命令
 
-```powershell
+```bash
 pnpm exec vp check    # 执行代码格式化 (Oxfmt)、类型安全感知 Lint 及 TypeScript 检查
 pnpm exec vp dev      # 启动开发服务器（自动反向代理双后端进程）
 pnpm exec vp build    # 生产环境打包构建
 pnpm exec vp test     # 执行单元测试与组件交互测试
 ```
 
-从仓库根目录启动时，可直接通过 PowerShell 便捷脚本一键拉起容器、后端多进程及前端服务：
+从仓库根目录启动时，先起容器依赖再各进程单独拉起（仓库不提供平台绑定的一键脚本）：
 
-```powershell
-pwsh scripts/dev.ps1            # 一键拉起基础设施容器、三个后端服务进程与前端 dev server
-pwsh scripts/dev.ps1 -NoWorker  # 纯 UI 开发模式：跳过摄取流水线 Worker
-pwsh scripts/dev.ps1 -Stop      # 依进程树安全停止本轮启动的所有实例
+```bash
+docker compose -f infra/compose.yaml up -d --wait   # 基础设施容器
+uv run python -m api.main            # 业务 API (8000)
+uv run python -m agent_runtime.main  # Agent 运行时 (8001)
+pnpm --dir frontend run dev          # 前端 dev server (5173)
 ```
 
 > **提示**：`vp dev` 默认仅绑定 `localhost`，访问 `http://localhost:5173` 即可，使用 `http://127.0.0.1:5173` 可能会被拒绝连接。

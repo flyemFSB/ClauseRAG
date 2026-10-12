@@ -70,7 +70,7 @@ export function RetrievalFlowGraph({ report }: RetrievalFlowGraphProps): ReactNo
             {/* Keyword 通道卡片 */}
             <div className="rounded-md border border-border bg-canvas p-2.5">
               <div className="flex items-center justify-between text-label">
-                <span className="font-medium text-ink">Keyword (pg_trgm 字面)</span>
+                <span className="font-medium text-ink">Keyword (BM25 词项)</span>
                 <span className="font-mono tabular-nums text-ink-secondary">
                   {keywordChannel ? formatMillis(keywordChannel.latencyMs) : "—"}
                 </span>

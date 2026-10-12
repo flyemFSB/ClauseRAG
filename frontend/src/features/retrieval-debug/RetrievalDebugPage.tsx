@@ -113,7 +113,7 @@ export function RetrievalDebugPage(): ReactNode {
         <header>
           <h1 className="text-title font-semibold text-ink">检索诊断与召回分析</h1>
           <p className="mt-1 max-w-[92ch] text-body text-ink-secondary">
-            对选定商业合同知识库发起真实检索测试：透视 BGE-M3 语义向量与 pg_trgm 关键词双通道召回、
+            对选定商业合同知识库发起真实检索测试：透视 BGE-M3 语义向量与 BM25 关键词双通道召回、
             应用层 RRF 融合加权、Cross-Encoder 精排以及证据门控（Evidence Gate）准入裁决全流程。
           </p>
         </header>

@@ -1,9 +1,4 @@
-/**
- * 系统依赖就绪探针 API
- *
- * 请求 `/health/ready` 获取平台底层基础设施（PostgreSQL、Qdrant、RabbitMQ、对象存储）
- * 的运行状态与检测延迟。
- */
+/** 系统依赖就绪探针 API，请求 `/health/ready` 获取基础设施运行状态。 */
 
 import { useQuery } from "@tanstack/react-query";
 import { requestJson } from "../../lib/api";
@@ -139,8 +134,7 @@ export function configValue(config: EffectiveConfig | undefined, env: string): s
 }
 
 export const DEPENDENCY_LABEL: Readonly<Record<string, string>> = {
-  postgres: "PostgreSQL",
-  qdrant: "Qdrant",
+  postgres: "ParadeDB",
   rabbitmq: "RabbitMQ",
   rustfs: "对象存储",
 };
@@ -151,8 +145,7 @@ export function dependencyLabel(name: string): string {
 
 /** 各基础设施依赖在架构中承担的业务职责说明 */
 export const DEPENDENCY_ROLE: Readonly<Record<string, string>> = {
-  postgres: "业务事实与会话；LangGraph 检查点",
-  qdrant: "业务子块向量集合",
+  postgres: "业务事实与会话；pgvector 向量索引与 pg_search BM25 索引；LangGraph 检查点",
   rabbitmq: "唯一的业务队列：摄取任务的传递",
   rustfs: "原始文档与解析产物",
 };
