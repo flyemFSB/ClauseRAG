@@ -18,7 +18,7 @@ from domain.knowledge import (
 )
 from infrastructure.db.mappers.ingestion import to_child_chunk, to_ingestion_job
 from infrastructure.db.models.chunks import ChildChunkRow
-from infrastructure.db.models.documents import DocumentRow, DocumentVersionRow
+from infrastructure.db.models.documents import DocumentVersionRow
 from infrastructure.db.models.ingestion import IngestionJobRow, ParseArtifactRow
 
 if TYPE_CHECKING:
@@ -363,19 +363,11 @@ async def child_count(session: AsyncSession, version_id: UUID) -> int:
 
 
 async def embedding_target(session: AsyncSession, version_id: UUID) -> EmbeddingTarget:
-    """读取向量化所需的子分块及归属范围元数据。"""
-    scope = (
-        await session.execute(
-            select(
-                DocumentVersionRow.id.label("version_id"),
-                DocumentRow.id.label("document_id"),
-                DocumentRow.knowledge_base_id,
-            )
-            .join(DocumentRow, DocumentRow.id == DocumentVersionRow.document_id)
-            .where(DocumentVersionRow.id == version_id)
-        )
-    ).one_or_none()
-    if scope is None:
+    """读取向量化所需的子分块。"""
+    exists = await session.scalar(
+        select(DocumentVersionRow.id).where(DocumentVersionRow.id == version_id)
+    )
+    if exists is None:
         raise RuntimeError(f"document version {version_id} has no document")
     child_rows = await session.scalars(
         select(ChildChunkRow)
@@ -383,9 +375,7 @@ async def embedding_target(session: AsyncSession, version_id: UUID) -> Embedding
         .order_by(ChildChunkRow.ordinal)
     )
     return EmbeddingTarget(
-        document_version_id=scope.version_id,
-        knowledge_base_id=scope.knowledge_base_id,
-        document_id=scope.document_id,
+        document_version_id=version_id,
         children=tuple(to_child_chunk(row) for row in child_rows),
     )
 

@@ -66,11 +66,6 @@ class Settings(BaseSettings):
     database_url: SecretStr
     rabbitmq_url: SecretStr
 
-    qdrant_url: str = "http://127.0.0.1:6333"
-    qdrant_api_key: SecretStr | None = None
-    qdrant_collection: str = "rag_child_chunks"
-    qdrant_timeout_seconds: int = Field(default=30, gt=0, le=300)
-
     s3_endpoint_url: str = "http://127.0.0.1:9000"
     s3_region: str = "us-east-1"
     s3_bucket: str = "rag-documents"
@@ -105,6 +100,12 @@ class Settings(BaseSettings):
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     provider_max_connections: int = Field(default=16, ge=1, le=200)
 
+    # pgvector HNSW 检索超参数：候选池大小、扩扫模式与单轮最大扫描行数。
+    hnsw_ef_search: int = Field(default=100, gt=0, le=1000)
+    hnsw_iterative_scan: Literal["off", "relaxed_order", "strict_order"] = "strict_order"
+    hnsw_max_scan_tuples: int = Field(default=20000, gt=0, le=1000000)
+
+    # 嵌入模型与维度部署契约，需与表结构定义一致。
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimension: int = Field(default=1024, gt=0, le=8192)
     embedding_batch_size: int = Field(default=16, ge=1, le=512)
@@ -136,19 +137,13 @@ class Settings(BaseSettings):
 
     # Chat 与意图识别模型配置
     chat_model: str = "Qwen/Qwen2.5-7B-Instruct"
-    # 对话模型可以指向与向量/重排不同的服务商。留空时沿用 `SILICONFLOW_*`，行为与从前一致；
-    # 指向 SenseNova 这类 OpenAI-compatible 服务时只需改这两项加 `CHAT_MODEL`，
-    # 不牵动 bge-m3 的向量维度与既有 Qdrant 集合（换向量模型要重新 embedding 整个语料）。
+    # 对话模型独立端点与鉴权密钥；未指定时沿用 SiliconFlow 配置。
     chat_base_url: str | None = None
     chat_api_key: SecretStr | None = None
 
     @model_validator(mode="after")
     def _keep_the_chat_endpoint_whole(self) -> Self:
-        """`CHAT_BASE_URL` 与 `CHAT_API_KEY` 必须同时给出。
-
-        模型名是跟着端点走的：只配一半会把一个服务商的模型名发到另一个服务商，
-        然后报出“模型不存在”或 401 —— 跟真正的原因（配置只写了一半）对不上号。
-        """
+        """校验 CHAT_BASE_URL 与 CHAT_API_KEY 必须成对配置。"""
         if (self.chat_base_url is None) != (self.chat_api_key is None):
             raise ValueError(
                 "CHAT_BASE_URL 与 CHAT_API_KEY 必须同时配置："
@@ -183,11 +178,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _keep_the_prompt_budget_inside_the_window(self) -> Self:
-        """上下文预算 + 输出上限 + 人机预留必须能装进模型上下文窗口。
-
-        预算只是提示词的一部分：系统策略、历史与当前问题也要进同一个窗口，所以这三项之和
-        超出窗口时配置本身就是错的，必须在启动时拒绝，而不是等到长文档把它撑爆。
-        """
+        """校验提示词预算总和不超出模型上下文窗口。"""
         total = self.max_context_tokens + self.chat_max_tokens + self.chat_prompt_reserve_tokens
         if total > self.chat_context_window:
             raise ValueError(

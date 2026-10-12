@@ -13,72 +13,34 @@ from domain.knowledge import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
     from uuid import UUID
 
     from domain.chunks.model import ChildChunk
 
-PAYLOAD_FIELDS: tuple[str, ...] = (
-    "child_id",
-    "parent_id",
-    "document_id",
-    "document_version_id",
-    "knowledge_base_id",
-    "heading_path",
-    "block_type",
-    "ordinal",
-    "line_start",
-    "line_end",
-    "text",
-)
-
-INDEXED_PAYLOAD_FIELDS: tuple[str, ...] = (
-    "knowledge_base_id",
-    "document_version_id",
-    "document_id",
-    "parent_id",
-    "block_type",
-)
-
-
-def child_payload(
-    child: ChildChunk,
-    *,
-    knowledge_base_id: UUID,
-    document_id: UUID,
-) -> dict[str, object]:
-    """构建子块写入向量数据库的 Payload 字典"""
-    return {
-        "child_id": str(child.child_id),
-        "parent_id": str(child.parent_id),
-        "document_id": str(document_id),
-        "document_version_id": str(child.document_version_id),
-        "knowledge_base_id": str(knowledge_base_id),
-        "heading_path": list(child.heading_path),
-        "block_type": child.block_type.value,
-        "ordinal": child.ordinal,
-        "line_start": child.line_start,
-        "line_end": child.line_end,
-        "text": child.content,
-    }
-
 
 @dataclass(frozen=True, slots=True)
 class VectorPoint:
-    """向量数据库单点记录（点 ID 与子块 ID 一致）"""
+    """待写入向量索引的单条子块向量。"""
 
-    point_id: UUID
-    payload: Mapping[str, object]
+    child_id: UUID
     vector: tuple[float, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class EmbeddingTarget:
-    """向量化目标对象（包含该版本下所有待嵌入子块）"""
+class EmbeddingWriteGuard:
+    """基于版本、作业及尝试代次的向量写入门控。"""
 
     document_version_id: UUID
-    knowledge_base_id: UUID
-    document_id: UUID
+    job_id: UUID
+    attempt: int
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingTarget:
+    """向量化目标对象，承载当前版本待处理的子分块列表。"""
+
+    document_version_id: UUID
     children: tuple[ChildChunk, ...]
 
 
@@ -191,24 +153,13 @@ def indexing_failure_state_for(error: IndexingError) -> StageFailureState:
 def plan_points(
     children: Sequence[ChildChunk],
     vectors: Sequence[Sequence[float]],
-    *,
-    knowledge_base_id: UUID,
-    document_id: UUID,
 ) -> tuple[VectorPoint, ...]:
-    """将子块与对应的特征向量组装为向量数据点集合"""
+    """将子块与对应的特征向量组装为待写入的向量集合"""
     if len(vectors) != len(children):
         raise EmbeddingProviderError(
             f"the provider returned {len(vectors)} vectors for {len(children)} texts"
         )
     return tuple(
-        VectorPoint(
-            point_id=child.child_id,
-            payload=child_payload(
-                child,
-                knowledge_base_id=knowledge_base_id,
-                document_id=document_id,
-            ),
-            vector=tuple(vector),
-        )
+        VectorPoint(child_id=child.child_id, vector=tuple(vector))
         for child, vector in zip(children, vectors, strict=True)
     )

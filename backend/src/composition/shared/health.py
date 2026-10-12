@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from application.shared.health import HealthService
 from infrastructure.probes.postgres_probe import PostgresProbe
-from infrastructure.probes.qdrant_probe import QdrantProbe
 from infrastructure.probes.rabbitmq_probe import RabbitMqProbe
 from infrastructure.probes.rustfs_probe import RustFsProbe
 
@@ -21,13 +20,6 @@ def open_health(settings: Settings) -> HealthService:
         probes=(
             PostgresProbe(
                 database_url=settings.database_url.get_secret_value(),
-                timeout_seconds=timeout_seconds,
-            ),
-            QdrantProbe(
-                qdrant_url=settings.qdrant_url,
-                api_key=(
-                    settings.qdrant_api_key.get_secret_value() if settings.qdrant_api_key else None
-                ),
                 timeout_seconds=timeout_seconds,
             ),
             RabbitMqProbe(

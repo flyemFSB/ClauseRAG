@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class KeywordChannel:
-    """关键字检索通道：基于 PostgreSQL pg_trgm 三元组索引执行文本相似度检索。"""
+    """关键字检索通道：基于 PostgreSQL pg_search 的 BM25 索引执行词项检索。"""
 
     channel = ChannelName.KEYWORD
 
@@ -29,7 +29,7 @@ class KeywordChannel:
         query: str,
         limit: int,
     ) -> Sequence[ChannelMatch]:
-        """按关键字三元组相似度在就绪文档中检索切片。"""
+        """按 BM25 相关性在就绪文档中检索切片。"""
         return await self._chunks.keyword_search(
             knowledge_base_id=knowledge_base_id,
             query=query,

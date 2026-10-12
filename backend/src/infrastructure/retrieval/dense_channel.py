@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 class DenseChannel:
-    """稠密向量检索通道：先向量化查询，再基于知识库过滤检索 Qdrant 最近邻。"""
+    """稠密向量检索通道：先向量化查询，再基于知识库过滤检索最近邻子块。"""
 
     channel = ChannelName.DENSE
 

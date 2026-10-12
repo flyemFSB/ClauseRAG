@@ -10,7 +10,6 @@ class Dependency(StrEnum):
     """关键外部服务组件枚举"""
 
     POSTGRES = "postgres"
-    QDRANT = "qdrant"
     RABBITMQ = "rabbitmq"
     RUSTFS = "rustfs"
 

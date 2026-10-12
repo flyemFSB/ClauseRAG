@@ -19,6 +19,7 @@ from domain.embedding import (
     EmbeddingError,
     EmbeddingProviderError,
     EmbeddingTarget,
+    EmbeddingWriteGuard,
     TransientEmbeddingError,
     UnembeddableChunksError,
     embedding_failure_state_for,
@@ -141,18 +142,18 @@ class EmbedDocumentVersion:
             raise UnembeddableChunksError(
                 f"document version {version_id} has no child chunk to embed"
             )
+        guard = EmbeddingWriteGuard(
+            document_version_id=version_id,
+            job_id=claim.job_id,
+            attempt=claim.attempt,
+        )
         batches = _batches(target, self._batch_size)
         async with asyncio.timeout(self._embed_timeout_seconds):
             await self._index.ensure_ready()
             for batch in batches:
                 vectors = await self._provider.embed([child.content for child in batch])
-                points = plan_points(
-                    batch,
-                    vectors,
-                    knowledge_base_id=target.knowledge_base_id,
-                    document_id=target.document_id,
-                )
-                await self._index.upsert(points)
+                points = plan_points(batch, vectors)
+                await self._index.upsert(points, guard=guard)
         completion = await self._documents.complete_embed(
             version_id,
             job_id=claim.job_id,
@@ -160,8 +161,8 @@ class EmbedDocumentVersion:
             at=datetime.now(UTC),
         )
         if completion.write is StageWrite.VANISHED:
+            # 向量随子块级联删除，无需额外清理。
             log.warning("向量化阶段版本记录已删除", document_version_id=str(version_id))
-            await self._discard_points(version_id)
         elif completion.write is StageWrite.SUPERSEDED:
             log.warning(
                 "向量化任务尝试被取代",
@@ -184,16 +185,6 @@ class EmbedDocumentVersion:
             dimension=embedded.dimension,
         )
         return EmbedOutcome(embedded=embedded, next_job=completion.next_job)
-
-    async def _discard_points(self, version_id: UUID) -> None:
-        try:
-            await self._index.delete_versions([version_id])
-        except VectorIndexError as error:
-            log.error(
-                "向量索引点清理失败",
-                document_version_id=str(version_id),
-                error_class=type(error).__name__,
-            )
 
 
 def _batches(target: EmbeddingTarget, batch_size: int) -> tuple[tuple[ChildChunk, ...], ...]:

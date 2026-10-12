@@ -15,13 +15,13 @@ from application.retrieval.service import RetrievalService
 from composition.shared.database import open_database
 from composition.shared.health import open_health
 from composition.shared.providers import open_chat, open_embedding_provider, open_reranker
-from composition.shared.qdrant import open_vector_index
 from composition.shared.retrieval import retrieval_budget
 from composition.shared.stores import (
     open_chunk_store,
     open_knowledge_bases,
 )
 from composition.shared.tracing import open_tracing
+from composition.shared.vectors import open_vector_index
 from domain.citation import CitationPolicy
 from infrastructure.config.settings import Settings, libpq_dsn, load_settings
 from infrastructure.db.stores.conversation_store import SqlAlchemyConversationStore
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from infrastructure.providers.siliconflow_chat import SiliconFlowChat
     from infrastructure.providers.siliconflow_embeddings import SiliconFlowEmbeddingProvider
     from infrastructure.providers.siliconflow_rerank import SiliconFlowReranker
-    from infrastructure.retrieval.qdrant_index import QdrantChildChunkIndex
+    from infrastructure.retrieval.pgvector_index import PgVectorChildChunkIndex
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +50,7 @@ class AgentRuntime:
     context: RunContext
     tracing: Tracing
     database: Database
-    vector_index: QdrantChildChunkIndex
+    vector_index: PgVectorChildChunkIndex
     embedding: SiliconFlowEmbeddingProvider
     chat: SiliconFlowChat
     reranker: SiliconFlowReranker
@@ -58,8 +58,7 @@ class AgentRuntime:
     checkpoints_pool_size: int
 
     async def close(self) -> None:
-        """依序安全释放向量索引、模型适配器与数据库连接池。"""
-        await self.vector_index.close()
+        """依序安全释放模型适配器与数据库连接池。"""
         await self.embedding.close()
         await self.chat.close()
         await self.reranker.close()
@@ -72,7 +71,7 @@ def build_agent_runtime() -> AgentRuntime:
     settings = load_settings()
     database = open_database(settings, pool_size=settings.agent_database_pool_size)
     tracing = open_tracing(settings)
-    vector_index = open_vector_index(settings)
+    vector_index = open_vector_index(settings, database=database)
     embedding = open_embedding_provider(settings)
     chat = open_chat(settings)
     reranker = open_reranker(settings)

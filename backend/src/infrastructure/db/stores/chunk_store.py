@@ -1,10 +1,9 @@
-"""基于 SQLAlchemy 实现分块存储仓储（支持关键字搜索与分块批量加载）。"""
+"""基于 SQLAlchemy 实现分块存储仓储（支持 BM25 关键词检索与分块批量加载）。"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import sqlalchemy as sa
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 
@@ -21,16 +20,6 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-_LIKE_ESCAPE = "\\"
-
-
-def like_pattern(query: str) -> str:
-    """转义查询文本中的通配符并构造用于 LIKE 的模式字符串。"""
-    escaped = query.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
-    for wildcard in ("%", "_"):
-        escaped = escaped.replace(wildcard, f"{_LIKE_ESCAPE}{wildcard}")
-    return f"%{escaped}%"
-
 
 class SqlAlchemyChunkStore:
     """分块存储仓储 SQLAlchemy 异步实现。"""
@@ -45,16 +34,16 @@ class SqlAlchemyChunkStore:
         query: str,
         limit: int,
     ) -> Sequence[ChannelMatch]:
-        """执行基于 pg_trgm 的三元组关键字相似度检索。"""
+        """执行 BM25 关键词检索并返回排序匹配列表。"""
         if limit <= 0 or not query.strip():
             return ()
-        similarity = func.similarity(ChildChunkRow.content, query)
+        score = func.pdb.score(ChildChunkRow.child_id)
         statement = (
             select(
                 ChildChunkRow.child_id,
                 ChildChunkRow.parent_id,
                 ChildChunkRow.document_version_id,
-                similarity.label("score"),
+                score.label("score"),
             )
             .join(
                 DocumentVersionRow,
@@ -64,9 +53,9 @@ class SqlAlchemyChunkStore:
             .where(
                 DocumentRow.knowledge_base_id == knowledge_base_id,
                 DocumentVersionRow.status == DocumentVersionStatus.READY.value,
-                ChildChunkRow.content.like(like_pattern(query), escape=_LIKE_ESCAPE),
+                ChildChunkRow.content.op("|||")(query),
             )
-            .order_by(sa.desc("score"), ChildChunkRow.child_id)
+            .order_by(score.desc(), ChildChunkRow.child_id)
             .limit(limit)
         )
         async with self._sessions() as session:

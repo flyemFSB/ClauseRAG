@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from uuid import UUID
 
-    from domain.embedding import VectorPoint
+    from domain.embedding import EmbeddingWriteGuard, VectorPoint
     from domain.retrieval import ChannelMatch
 
 
@@ -21,14 +21,14 @@ class VectorIndexRejectedError(VectorIndexError):
 
 
 class VectorIndex(Protocol):
-    """业务稠密向量索引接口协议"""
+    """业务稠密向量索引接口协议。"""
 
     async def ensure_ready(self) -> None:
-        """确保目标向量集合及载荷索引已就绪（幂等创建）"""
+        """校验向量表、维度契约与近似最近邻索引可用（只读，不执行 DDL）"""
         ...
 
-    async def upsert(self, points: Sequence[VectorPoint]) -> None:
-        """批量插入或更新向量点"""
+    async def upsert(self, points: Sequence[VectorPoint], *, guard: EmbeddingWriteGuard) -> None:
+        """在写入门控仍然有效时批量插入或更新子块向量"""
         ...
 
     async def search_dense(
@@ -42,7 +42,7 @@ class VectorIndex(Protocol):
         ...
 
     async def count_for_version(self, document_version_id: UUID) -> int:
-        """精确统计指定版本在向量库中的点总数"""
+        """精确统计指定版本当前模型下的有效向量数"""
         ...
 
     async def delete_versions(self, document_version_ids: Sequence[UUID]) -> None:
@@ -50,9 +50,5 @@ class VectorIndex(Protocol):
         ...
 
     async def delete_knowledge_base(self, knowledge_base_id: UUID) -> None:
-        """按知识库 ID 范围删除集合内的所有向量点"""
-        ...
-
-    async def close(self) -> None:
-        """释放底层网络连接资源"""
+        """按知识库 ID 范围删除所有关联的向量点"""
         ...

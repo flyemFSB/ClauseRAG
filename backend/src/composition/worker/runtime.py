@@ -10,10 +10,10 @@ from composition.shared.database import open_database
 from composition.shared.object_storage import open_object_storage
 from composition.shared.parsers import open_parsers
 from composition.shared.providers import open_embedding_provider
-from composition.shared.qdrant import open_vector_index
 from composition.shared.queue import open_job_queue
 from composition.shared.stores import open_ingestion_store
 from composition.shared.tracing import open_tracing
+from composition.shared.vectors import open_vector_index
 from composition.worker.cleanup import open_cleanup_lane
 from composition.worker.ingestion import open_ingestion
 from infrastructure.config.settings import load_settings
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from infrastructure.observability.langfuse_tracing import Tracing
     from infrastructure.providers.siliconflow_embeddings import SiliconFlowEmbeddingProvider
     from infrastructure.queue.job_queue import IngestionJobQueue, StageRunner
-    from infrastructure.retrieval.qdrant_index import QdrantChildChunkIndex
+    from infrastructure.retrieval.pgvector_index import PgVectorChildChunkIndex
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,13 +42,12 @@ class WorkerRuntime:
     cleanup: CleanupLane
     job_queue: IngestionJobQueue
     database: Database
-    vector_index: QdrantChildChunkIndex
+    vector_index: PgVectorChildChunkIndex
     tracing: Tracing
     embedding: SiliconFlowEmbeddingProvider
 
     async def close(self) -> None:
-        """依序释放向量索引、模型适配器、追踪导出器与数据库连接池。"""
-        await self.vector_index.close()
+        """依序释放模型适配器、追踪导出器与数据库连接池。"""
         await self.embedding.close()
         self.tracing.shutdown()
         await self.database.dispose()
@@ -59,7 +58,7 @@ def build_worker_runtime() -> WorkerRuntime:
     settings = load_settings()
     database = open_database(settings, pool_size=settings.worker_database_pool_size)
     tracing = open_tracing(settings)
-    vector_index = open_vector_index(settings)
+    vector_index = open_vector_index(settings, database=database)
     embedding = open_embedding_provider(settings)
     queue = open_job_queue(settings, tracing)
     objects = open_object_storage(settings)

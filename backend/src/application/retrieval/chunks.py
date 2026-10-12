@@ -21,7 +21,7 @@ class ChunkStore(Protocol):
         query: str,
         limit: int,
     ) -> Sequence[ChannelMatch]:
-        """在知识库已就绪版本中进行三元组模糊关键词匹配检索"""
+        """在知识库已就绪版本中执行 BM25 词项匹配检索"""
         ...
 
     async def load_records(

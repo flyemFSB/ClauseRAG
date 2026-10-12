@@ -1,8 +1,11 @@
 # ClauseRAG 后端本地基础设施编排拓扑
 #
-# 基础服务镜像（PostgreSQL、Qdrant、Redis、RabbitMQ、RustFS）默认使用本地已有镜像。
+# 基础服务镜像（ParadeDB/PostgreSQL、Redis、RabbitMQ、RustFS）默认使用本地已有镜像。
 # Langfuse 可观测性技术栈（含 ClickHouse、Web 与 Worker）复用本拓扑的 PostgreSQL、
 # Redis（库 1）与 RustFS，并添加 ClickHouse（详见 ADR-0014）。
+#
+# 向量检索不再有独立服务：pgvector 的 HNSW 与 pg_search 的 BM25 都跑在 postgres 里，
+# 数据与业务事实同库同事务（见 docs/research/paradedb-migration-assessment.md）。
 #
 # 凭据从环境变量读取，并具备安全的本地默认值：
 #   docker compose -f infra/compose.yaml up -d --wait
@@ -21,7 +24,6 @@ x-app-environment: &app-environment
   AGENT_RUNTIME_HOST: 0.0.0.0
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag_local}@postgres:5432/${POSTGRES_DB:-rag}
   RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-rag}:${RABBITMQ_DEFAULT_PASS:-rag_local}@rabbitmq:5672//
-  QDRANT_URL: http://qdrant:6333
   S3_ENDPOINT_URL: http://rustfs:9000
   S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-ragadmin}
   S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rag_local_secret}
@@ -30,8 +32,12 @@ x-app-environment: &app-environment
 services:
   postgres:
     # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
+    #
+    # ParadeDB 镜像 = postgres:18(Debian trixie) + pg_search + pgvector。digest 固定到实测过的
+    # 那一版：镜像里带着扩展二进制不等于目标库已经建好扩展，扩展由 `cli schema-init`
+    # 在建表前显式创建，并由 /health/ready 核对。
     container_name: clauserag-postgres
-    image: postgres:18-alpine
+    image: paradedb/paradedb:0.26.1-pg18@sha256:29bd8cc90a89ff15f8350f89b4849c2ef807aa9381c79febd1afb1a8a25fb706
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rag}
@@ -39,30 +45,20 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-rag}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
+    # HNSW 与 BM25 索引构建是并行的：PostgreSQL 用共享内存做并行 maintenance worker 的通信，
+    # 默认 64MB 的 /dev/shm 会让大表建索引直接失败。
+    shm_size: ${POSTGRES_SHM_SIZE:-1g}
     volumes:
       # postgres:18 uses PGDATA=/var/lib/postgresql/18/docker, so the image volume root is
       # /var/lib/postgresql (not /var/lib/postgresql/data as in earlier major versions).
-      - postgres-data:/var/lib/postgresql
+      #
+      # 卷名带上 initdb 的分支：这套拓扑从 postgres:18-alpine 换到 Debian trixie，同 major 并不
+      # 证明 locale/collation/PGDATA 可互认，把旧库直接挂给新镜像会让排序语义悄悄改变。
+      # 旧卷 `clauserag_postgres-data` 作为回滚工件保留，由数据负责人按保留期销毁；
+      # 迁移路径是逻辑备份/恢复（见 docs/operations/local-development.md）。
+      - postgres-data-trixie:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
-
-  qdrant:
-    # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
-    container_name: clauserag-qdrant
-    image: qdrant/qdrant:v1.19.1
-    restart: unless-stopped
-    ports:
-      - "${QDRANT_HTTP_PORT:-6333}:6333"
-      - "${QDRANT_GRPC_PORT:-6334}:6334"
-    volumes:
-      - qdrant-data:/qdrant/storage
-    healthcheck:
-      # The image ships neither curl nor wget; bash is present, so probe the HTTP port directly.
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333'"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -228,21 +224,23 @@ services:
   # ---------------------------------------------------------------- 应用进程（profile: app）
   #
   # 四个服务共用一个后端镜像与一个前端镜像（ADR-0020 的两个 HTTP 进程 + 队列 worker + SPA），
-  # 靠 command 区分；不带 profile 时只起基础设施，所以宿主开发循环（scripts/dev.ps1）不受影响：
+  # 靠 command 区分；不带 profile 时只起基础设施，所以宿主开发循环不受影响：
   #
   #   docker compose -f infra/compose.yaml --profile app up -d --build --wait
   #
   # 只发布前端一个入口（WEB_PORT）；两个后端进程只在拓扑内部可达。
 
-  # 一次性迁移：API/agent/worker 都等它跑完再启动，因此没有人靠人工记得敲 alembic upgrade head。
-  migrate:
+  # 一次性 schema 引导：API/agent/worker 都等它跑完再启动，因此没有人靠人工记得建表。
+  # 项目在开发阶段，schema 就是模型的当前形状，所以这里从模型建表而不是回放迁移历史；
+  # `schema-init` 只建不缺，对已有数据无副作用（改模型后用 `schema-reset`，它会先清空）。
+  schema-init:
     # 固定容器名：去掉 compose 自动加的 ${项目名} 前缀与 -1 序号。
-    container_name: clauserag-migrate
+    container_name: clauserag-schema-init
     profiles: ["app"]
     build: &app-build
       context: ..
       dockerfile: backend/Dockerfile
-    command: ["alembic", "upgrade", "head"]
+    command: ["python", "-m", "cli", "schema-init"]
     env_file: ../.env
     environment:
       <<: *app-environment
@@ -262,10 +260,8 @@ services:
       <<: *app-environment
       API_PORT: "8000"
     depends_on:
-      migrate:
+      schema-init:
         condition: service_completed_successfully
-      qdrant:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       rustfs:
@@ -289,10 +285,8 @@ services:
       <<: *app-environment
       AGENT_RUNTIME_PORT: "8001"
     depends_on:
-      migrate:
+      schema-init:
         condition: service_completed_successfully
-      qdrant:
-        condition: service_healthy
       rustfs:
         condition: service_healthy
     healthcheck:
@@ -313,11 +307,9 @@ services:
     environment:
       <<: *app-environment
     depends_on:
-      migrate:
+      schema-init:
         condition: service_completed_successfully
       rabbitmq:
-        condition: service_healthy
-      qdrant:
         condition: service_healthy
       rustfs:
         condition: service_healthy
@@ -346,8 +338,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres-data:
-  qdrant-data:
+  postgres-data-trixie:
   redis-data:
   rabbitmq-data:
   rustfs-data:
