@@ -1,4 +1,4 @@
-"""CLI 命令行入口：存储初始化、单阶段摄取与索引重建。"""
+"""CLI 命令行入口：schema 建立、存储初始化、单阶段摄取与索引重建。"""
 
 from __future__ import annotations
 
@@ -9,12 +9,14 @@ from typing import TYPE_CHECKING
 from cli.commands.cleanup import DEFAULT_CLEANUP_LIMIT, cleanup_pending
 from cli.commands.evaluate import evaluate_ragas
 from cli.commands.graph import graph_topology, observability_init
+from cli.commands.schema import schema_init, schema_reset
 from cli.commands.stages import RUNNABLE_STAGES, parse_version_id, reindex, run_stage
 from cli.commands.storage import storage_init
 from composition.cli.runtime import (
     build_cleanup_runtime,
     build_reindex_runtime,
     build_run_stage_runtime,
+    build_schema_runtime,
     build_storage_runtime,
 )
 from domain.knowledge import IngestionStage
@@ -39,6 +41,10 @@ def _dispatch(arguments: argparse.Namespace) -> int:
     """按需构建对应子命令的轻量运行时并调度执行。"""
     if arguments.command == "storage-init":
         return storage_init(build_storage_runtime())
+    if arguments.command == "schema-init":
+        return schema_init(build_schema_runtime())
+    if arguments.command == "schema-reset":
+        return schema_reset(build_schema_runtime())
     if arguments.command == "graph-topology":
         return graph_topology()
     if arguments.command == "observability-init":
@@ -71,6 +77,16 @@ def _build_parser() -> argparse.ArgumentParser:
         description="ClauseRAG 平台运维与管理命令行工具。",
     )
     commands = parser.add_subparsers(dest="command", required=True)
+
+    commands.add_parser(
+        "schema-init",
+        help="从 ORM 模型幂等建立缺失的业务表与检索扩展，不触碰已有数据",
+    )
+
+    commands.add_parser(
+        "schema-reset",
+        help="破坏性：删除并重建全部业务表（开发循环用；表里现有的数据会全部丢失）",
+    )
 
     commands.add_parser(
         "storage-init",

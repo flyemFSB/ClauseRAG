@@ -9,11 +9,12 @@ from composition.shared.database import open_database
 from composition.shared.object_storage import open_object_storage
 from composition.shared.parsers import open_parsers
 from composition.shared.providers import open_chat, open_embedding_provider
-from composition.shared.qdrant import open_vector_index
+from composition.shared.vectors import open_vector_index
 from composition.worker.cleanup import open_cleanup_lane
 from composition.worker.ingestion import open_ingestion
 from domain.knowledge import IngestionStage
 from infrastructure.config.settings import load_settings
+from infrastructure.db.schema import SchemaBootstrap
 from infrastructure.storage.s3_bucket import S3BucketInitializer
 
 if TYPE_CHECKING:
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from infrastructure.db.engine import Database
     from infrastructure.providers.siliconflow_chat import SiliconFlowChat
     from infrastructure.providers.siliconflow_embeddings import SiliconFlowEmbeddingProvider
-    from infrastructure.retrieval.qdrant_index import QdrantChildChunkIndex
+    from infrastructure.retrieval.pgvector_index import PgVectorChildChunkIndex
 
 RUNNABLE_STAGES: tuple[IngestionStage, ...] = (
     IngestionStage.PARSE,
@@ -40,13 +41,11 @@ class StageRuntime:
     settings: Settings
     database: Database
     ingestion: DocumentIngestion
-    vector_index: QdrantChildChunkIndex | None = None
+    vector_index: PgVectorChildChunkIndex | None = None
     embedding: SiliconFlowEmbeddingProvider | None = None
     chat: SiliconFlowChat | None = None
 
     async def close(self) -> None:
-        if self.vector_index is not None:
-            await self.vector_index.close()
         if self.embedding is not None:
             await self.embedding.close()
         if self.chat is not None:
@@ -63,18 +62,29 @@ class StorageRuntime:
 
 
 @dataclass(frozen=True, slots=True)
+class SchemaRuntime:
+    """业务 schema 建立与清空命令运行时。"""
+
+    settings: Settings
+    database: Database
+    bootstrap: SchemaBootstrap
+
+    async def close(self) -> None:
+        await self.database.dispose()
+
+
+@dataclass(frozen=True, slots=True)
 class CleanupRuntime:
     """物理清理执行命令运行时。"""
 
     settings: Settings
     database: Database
     lane: CleanupLane
-    vector_index: QdrantChildChunkIndex
+    vector_index: PgVectorChildChunkIndex
     embedding: SiliconFlowEmbeddingProvider
     chat: SiliconFlowChat
 
     async def close(self) -> None:
-        await self.vector_index.close()
         await self.embedding.close()
         await self.chat.close()
         await self.database.dispose()
@@ -101,7 +111,7 @@ def build_run_stage_runtime(stage: IngestionStage) -> StageRuntime:
             ),
         )
     if stage in (IngestionStage.EMBED, IngestionStage.INDEX):
-        vector_index = open_vector_index(settings)
+        vector_index = open_vector_index(settings, database=database)
         embedding = open_embedding_provider(settings)
         return StageRuntime(
             settings=settings,
@@ -123,7 +133,7 @@ def build_reindex_runtime() -> StageRuntime:
     """构建重新向量化与索引校验运行时。"""
     settings = load_settings()
     database = _open_database(settings)
-    vector_index = open_vector_index(settings)
+    vector_index = open_vector_index(settings, database=database)
     embedding = open_embedding_provider(settings)
     return StageRuntime(
         settings=settings,
@@ -141,7 +151,6 @@ def build_reindex_runtime() -> StageRuntime:
 
 
 def build_storage_runtime() -> StorageRuntime:
-    """构建存储桶初始化运行时。"""
     settings = load_settings()
     return StorageRuntime(
         settings=settings,
@@ -156,11 +165,22 @@ def build_storage_runtime() -> StorageRuntime:
     )
 
 
+def build_schema_runtime() -> SchemaRuntime:
+    """构建业务 schema 建立与清空运行时。"""
+    settings = load_settings()
+    database = _open_database(settings)
+    return SchemaRuntime(
+        settings=settings,
+        database=database,
+        bootstrap=SchemaBootstrap(engine=database.engine),
+    )
+
+
 def build_cleanup_runtime() -> CleanupRuntime:
     """构建未决清理流水线运维运行时。"""
     settings = load_settings()
     database = _open_database(settings)
-    vector_index = open_vector_index(settings)
+    vector_index = open_vector_index(settings, database=database)
     embedding = open_embedding_provider(settings)
     chat = open_chat(settings)
     return CleanupRuntime(

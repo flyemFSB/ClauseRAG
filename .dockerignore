@@ -1,6 +1,6 @@
 # Build context for both application images (`backend/Dockerfile`, `frontend/Dockerfile`).
 #
-# The backend image needs the project definition, the lockfile, the source and the migrations; the
+# The backend image needs the project definition, the lockfile and the source; the
 # frontend image needs `frontend/`. Everything else is excluded, and two exclusions are load-bearing:
 #
 #   * `.env` — a deployment's credentials reach the container through `env_file` at run time. Baking

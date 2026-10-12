@@ -34,11 +34,9 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project
 
-# The application, the migration history and Alembic's configuration. `alembic.ini` reads
-# `DATABASE_URL` from the environment, so the one-shot `migrate` service needs nothing else.
+# The application itself. The schema is created from the ORM models at deploy time
+# (`python -m cli schema-init`), so no migration directory and no Alembic configuration ride along.
 COPY backend/src ./backend/src
-COPY backend/migrations ./backend/migrations
-COPY alembic.ini ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev
 
 # Nothing in the image writes to its own filesystem, so the process does not need to be root. The
