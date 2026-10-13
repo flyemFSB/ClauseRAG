@@ -129,8 +129,8 @@ async function send(path: string, options: RawRequestOptions): Promise<Response>
   return response;
 }
 
-/** 解析后端返回的 HTTP 错误详情（兼容 FastAPI 校验错误结构与通用 detail 字段） */
-async function describeHttpFailure(path: string, response: Response): Promise<string> {
+/** 解析 HTTP 响应错误详情文本。 */
+export async function describeHttpFailure(path: string, response: Response): Promise<string> {
   const fallback = `${path} answered HTTP ${response.status}`;
   try {
     const payload: unknown = await response.json();

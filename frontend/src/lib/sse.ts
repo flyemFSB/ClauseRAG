@@ -5,7 +5,7 @@
  * 支持调用方 AbortSignal 中止与跨分块行尾标准化。
  */
 
-import { ApiError, malformed } from "./api";
+import { ApiError, describeHttpFailure, malformed } from "./api";
 import { asNullableString, asNumber, asRecord, asString, asStringArray } from "./contract";
 
 export const SSE_SCHEMA_VERSION = 1;
@@ -123,7 +123,7 @@ export async function* streamAgentRun(request: StreamRunRequest): AsyncGenerator
     throw new ApiError("network", `${path} could not be reached: ${String(cause)}`);
   }
   if (!response.ok) {
-    throw new ApiError("http", `${path} answered HTTP ${response.status}`, response.status);
+    throw new ApiError("http", await describeHttpFailure(path, response), response.status);
   }
   if (response.body === null) {
     throw malformed(`${path} answered no stream body`);
@@ -131,7 +131,7 @@ export async function* streamAgentRun(request: StreamRunRequest): AsyncGenerator
 
   let terminal = false;
   for await (const frame of readFrames(response.body)) {
-    // 保证单流仅且必须产生一个终态事件，终态后的事件一律视为非法
+    // 终态事件后禁止接收新事件
     if (terminal) {
       throw malformed(`${path} carried an event after its terminal event`);
     }
