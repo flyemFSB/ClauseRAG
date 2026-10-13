@@ -17,8 +17,11 @@ from api.knowledge_bases import (
     create_knowledge_bases_router,
     get_knowledge_base_service,
 )
+from api.request_limits import get_rate_limit_guard
+from application.shared.rate_limit import RateLimitExceededError, RateLimitUnavailableError
 from composition.api.config_payload import render_config
 from domain.knowledge import KnowledgeNotFoundError
+from infrastructure.redis.client import report_startup
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -58,6 +61,30 @@ def install_shared(app: FastAPI) -> None:
             content={"detail": str(error)},
         )
 
+    @app.exception_handler(RateLimitExceededError)
+    async def handle_rate_limit_exceeded(
+        _request: Request,
+        error: RateLimitExceededError,
+    ) -> JSONResponse:
+        """处理请求速率超限异常，返回 429 与重试建议间隔。"""
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": str(error)},
+            headers={"Retry-After": str(error.retry_after_seconds)},
+        )
+
+    @app.exception_handler(RateLimitUnavailableError)
+    async def handle_rate_limit_unavailable(
+        _request: Request,
+        error: RateLimitUnavailableError,
+    ) -> JSONResponse:
+        """处理限流后端不可用异常，返回 503 与重试建议间隔。"""
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": str(error)},
+            headers={"Retry-After": "1"},
+        )
+
 
 def create_app(runtime: ApiRuntime) -> FastAPI:
     """构建业务 API FastAPI 应用并注册各模块路由。"""
@@ -66,6 +93,7 @@ def create_app(runtime: ApiRuntime) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+        await report_startup(settings, runtime.redis)
         log.info("业务API进程启动")
         try:
             yield
@@ -77,6 +105,7 @@ def create_app(runtime: ApiRuntime) -> FastAPI:
     install_shared(app)
     bind(app, get_knowledge_base_service, runtime.knowledge_bases)
     bind(app, get_document_catalog, runtime.catalog)
+    bind(app, get_rate_limit_guard, runtime.rate_limits)
 
     @app.middleware("http")
     async def bound_request_body(

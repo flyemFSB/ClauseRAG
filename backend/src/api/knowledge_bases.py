@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 
 from api.documents import DocumentCatalogDependency
 from api.knowledge_schemas import (
@@ -15,6 +15,7 @@ from api.knowledge_schemas import (
     KnowledgeBaseResponse,
     KnowledgeBaseUpdateRequest,
 )
+from api.request_limits import RateLimitGuardDependency, client_host
 from application.knowledge.knowledge_bases import KnowledgeBaseChanges, KnowledgeBaseService
 from application.knowledge.uploads import (
     EmptyUploadError,
@@ -60,9 +61,17 @@ def create_knowledge_bases_router() -> APIRouter:
 
     @router.get("/knowledge-bases")
     async def list_knowledge_bases(
+        request: Request,
         knowledge_bases: KnowledgeBaseServiceDependency,
+        limits: RateLimitGuardDependency,
     ) -> list[KnowledgeBaseResponse]:
         """获取全部知识库列表"""
+        await limits.enforce(
+            route="knowledge-bases.list",
+            principal=client_host(request),
+            limit=300,
+            failure="open",
+        )
         return [
             KnowledgeBaseResponse.from_knowledge_base(knowledge_base)
             for knowledge_base in await knowledge_bases.list_for_owner(PLATFORM_OWNER_ID)
@@ -123,10 +132,17 @@ def create_knowledge_bases_router() -> APIRouter:
     async def upload_document(
         knowledge_base_id: UUID,
         catalog: DocumentCatalogDependency,
+        request: Request,
+        limits: RateLimitGuardDependency,
         file: Annotated[UploadFile, File()],
         document_id: Annotated[UUID | None, Form()] = None,
     ) -> DocumentUploadResponse:
         """上传文档版本并触发解析流水线"""
+        await limits.enforce(
+            route="documents.upload",
+            principal=client_host(request),
+            limit=30,
+        )
         try:
             upload = await catalog.upload(
                 owner_id=PLATFORM_OWNER_ID,

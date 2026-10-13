@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from application.retrieval.cache import CACHE_SCHEMA_VERSION
 from application.retrieval.models import RetrievalResult
 from domain.citation import CitationSource
 from domain.conversation import (
@@ -325,3 +326,12 @@ class RetrievalDebugResponse(BaseModel):
             ],
             context_tokens=result.context_tokens,
         )
+
+
+class CachedRetrievalDebug(BaseModel):
+    """检索调试响应缓存信封，携带结构版本与语料版本校验标识。"""
+
+    schema_version: int = CACHE_SCHEMA_VERSION
+    corpus_revision: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    response: RetrievalDebugResponse

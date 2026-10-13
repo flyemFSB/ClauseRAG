@@ -6,12 +6,14 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
 
 from agent_runtime.runner import ConversationAgent
 from api.agent_schemas import (
     AskRequest,
+    CachedRetrievalDebug,
     ConversationDetailResponse,
     ConversationResponse,
     CreateConversationRequest,
@@ -19,11 +21,21 @@ from api.agent_schemas import (
     RetrievalDebugRequest,
     RetrievalDebugResponse,
 )
+from api.request_limits import RateLimitGuardDependency, client_host
 from application.agent.query_understanding import QueryUnderstandingService
 from application.conversations.service import ConversationService
+from application.knowledge.contracts import CorpusRevision
 from application.knowledge.knowledge_bases import KnowledgeBaseService
+from application.retrieval.cache import (
+    CACHE_SCHEMA_VERSION,
+    CacheRebuildLockPort,
+    RetrievalCachePort,
+    RetrievalCacheScope,
+    cache_key,
+)
 from application.retrieval.service import RetrievalService
 from domain.identity import PLATFORM_OWNER_ID
+from domain.retrieval import ChannelStatus, RerankStatus
 
 
 def get_conversation_service() -> ConversationService:
@@ -51,6 +63,26 @@ def get_conversation_agent() -> ConversationAgent:
     raise RuntimeError("会话智能体未绑定至当前应用实例")
 
 
+def get_retrieval_cache() -> RetrievalCachePort:
+    """获取检索调试缓存"""
+    raise RuntimeError("检索调试缓存未绑定至当前应用实例")
+
+
+def get_cache_rebuild_lock() -> CacheRebuildLockPort:
+    """获取检索缓存回源锁"""
+    raise RuntimeError("检索缓存回源锁未绑定至当前应用实例")
+
+
+def get_corpus_revision() -> CorpusRevision:
+    """获取可检索语料版本读取器"""
+    raise RuntimeError("语料版本读取器未绑定至当前应用实例")
+
+
+def get_retrieval_config_revision() -> str:
+    """获取本进程生效的检索配置指纹"""
+    raise RuntimeError("检索配置指纹未绑定至当前应用实例")
+
+
 ConversationServiceDependency = Annotated[ConversationService, Depends(get_conversation_service)]
 KnowledgeBaseServiceDependency = Annotated[
     KnowledgeBaseService, Depends(get_knowledge_base_service)
@@ -61,6 +93,46 @@ UnderstandingDependency = Annotated[
 ]
 RetrievalDependency = Annotated[RetrievalService, Depends(get_retrieval_service)]
 ConversationAgentDependency = Annotated[ConversationAgent, Depends(get_conversation_agent)]
+RetrievalCacheDependency = Annotated[RetrievalCachePort, Depends(get_retrieval_cache)]
+CacheRebuildLockDependency = Annotated[CacheRebuildLockPort, Depends(get_cache_rebuild_lock)]
+CorpusRevisionDependency = Annotated[CorpusRevision, Depends(get_corpus_revision)]
+RetrievalConfigRevisionDependency = Annotated[str, Depends(get_retrieval_config_revision)]
+
+
+async def cached_debug_response(
+    cache: RetrievalCachePort,
+    key: str,
+    scope: RetrievalCacheScope,
+) -> RetrievalDebugResponse | None:
+    """读取并校验缓存信封，解析失败或版本不一致时删除缓存并返回 None。"""
+    payload = await cache.get(key)
+    if payload is None:
+        return None
+    try:
+        envelope = CachedRetrievalDebug.model_validate_json(payload)
+    except ValidationError:
+        await cache.discard(key)
+        return None
+    if (
+        envelope.schema_version != CACHE_SCHEMA_VERSION
+        or envelope.corpus_revision != scope.corpus_revision
+    ):
+        await cache.discard(key)
+        return None
+    return envelope.response
+
+
+def is_cacheable(response: RetrievalDebugResponse) -> bool:
+    """判断检索响应是否可缓存，跳过通道失败或重排降级的响应。"""
+    if any(channel.status == ChannelStatus.FAILED.value for channel in response.channels):
+        return False
+    return response.rerank.status != RerankStatus.DEGRADED.value
+
+
+def cached_debug_payload(response: RetrievalDebugResponse, scope: RetrievalCacheScope) -> bytes:
+    """将检索调试响应序列化为包含语料版本的缓存数据。"""
+    envelope = CachedRetrievalDebug(corpus_revision=scope.corpus_revision, response=response)
+    return envelope.model_dump_json().encode()
 
 
 def create_conversations_router() -> APIRouter:
@@ -74,9 +146,16 @@ def create_conversations_router() -> APIRouter:
     async def create_conversation(
         knowledge_base_id: UUID,
         payload: CreateConversationRequest,
+        request: Request,
         conversations: ConversationServiceDependency,
+        limits: RateLimitGuardDependency,
     ) -> ConversationResponse:
         """在指定知识库下创建新对话"""
+        await limits.enforce(
+            route="conversations.create",
+            principal=client_host(request),
+            limit=30,
+        )
         conversation = await conversations.create(
             owner_id=PLATFORM_OWNER_ID,
             knowledge_base_id=knowledge_base_id,
@@ -86,9 +165,17 @@ def create_conversations_router() -> APIRouter:
 
     @router.get("/conversations")
     async def list_conversations(
+        request: Request,
         conversations: ConversationServiceDependency,
+        limits: RateLimitGuardDependency,
     ) -> list[ConversationResponse]:
         """获取全部对话列表"""
+        await limits.enforce(
+            route="conversations.list",
+            principal=client_host(request),
+            limit=300,
+            failure="open",
+        )
         return [
             ConversationResponse.from_conversation(conversation)
             for conversation in await conversations.list_for_owner(owner_id=PLATFORM_OWNER_ID)
@@ -132,9 +219,16 @@ def create_conversations_router() -> APIRouter:
     async def ask(
         conversation_id: UUID,
         payload: AskRequest,
+        request: Request,
         agent: ConversationAgentDependency,
+        limits: RateLimitGuardDependency,
     ) -> StreamingResponse:
         """流式提问并返回 SSE 事件流"""
+        await limits.enforce(
+            route="conversations.ask",
+            principal=client_host(request),
+            limit=30,
+        )
         events = await agent.run(
             conversation_id=conversation_id,
             user_id=PLATFORM_OWNER_ID,
@@ -157,29 +251,65 @@ def create_conversations_router() -> APIRouter:
     @router.post("/retrieval-debug/query")
     async def retrieval_debug(
         payload: RetrievalDebugRequest,
+        request: Request,
         knowledge_bases: KnowledgeBaseServiceDependency,
         understanding: UnderstandingDependency,
         retrieval: RetrievalDependency,
+        cache: RetrievalCacheDependency,
+        rebuild_lock: CacheRebuildLockDependency,
+        revisions: CorpusRevisionDependency,
+        config_revision: RetrievalConfigRevisionDependency,
+        limits: RateLimitGuardDependency,
     ) -> RetrievalDebugResponse:
         """单次检索调试探针（返回各渠道召回、融合、重排与门控详情）"""
+        await limits.enforce(
+            route="retrieval-debug.query",
+            principal=client_host(request),
+            limit=30,
+        )
         await knowledge_bases.get(
             owner_id=PLATFORM_OWNER_ID,
             knowledge_base_id=payload.knowledge_base_id,
         )
-        classified = await understanding.understand(question=payload.query)
-        # 非检索意图下分类器不做改写，查询列表可以为空；这个端点始终要跑一轮真实检索，所以和
-        # agent 的 retrieve 节点用同一条兜底：没有改写就用原问题。
-        queries = classified.queries or (payload.query,)
-        result = await retrieval.retrieve(
+
+        async def rebuild() -> RetrievalDebugResponse:
+            """回源执行检索并构建调试响应。"""
+            classified = await understanding.understand(question=payload.query)
+            # 无改写查询时兜底使用原始问题执行检索
+            queries = classified.queries or (payload.query,)
+            result = await retrieval.retrieve(
+                knowledge_base_id=payload.knowledge_base_id,
+                query=queries[0],
+                rewritten_queries=queries,
+            )
+            return RetrievalDebugResponse.from_result(
+                result,
+                query=payload.query,
+                queries=list(queries),
+                intent=classified.intent.value,
+            )
+
+        if not cache.enabled:
+            return await rebuild()
+
+        scope = RetrievalCacheScope(
+            owner_id=PLATFORM_OWNER_ID,
             knowledge_base_id=payload.knowledge_base_id,
-            query=queries[0],
-            rewritten_queries=queries,
-        )
-        return RetrievalDebugResponse.from_result(
-            result,
+            corpus_revision=await revisions.revision_for_knowledge_base(payload.knowledge_base_id),
             query=payload.query,
-            queries=list(queries),
-            intent=classified.intent.value,
+            config_revision=config_revision,
         )
+        key = cache_key(scope)
+        cached = await cached_debug_response(cache, key, scope)
+        if cached is not None:
+            return cached
+        async with rebuild_lock.hold(key) as held:
+            if not held:
+                cached = await cached_debug_response(cache, key, scope)
+                return cached if cached is not None else await rebuild()
+            response = await rebuild()
+            if is_cacheable(response):
+                await cache.put(key, cached_debug_payload(response, scope))
+            return response
 
     return router

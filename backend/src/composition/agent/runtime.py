@@ -15,9 +15,16 @@ from application.retrieval.service import RetrievalService
 from composition.shared.database import open_database
 from composition.shared.health import open_health
 from composition.shared.providers import open_chat, open_embedding_provider, open_reranker
+from composition.shared.redis import (
+    open_cache_rebuild_lock,
+    open_rate_limit_guard,
+    open_retrieval_cache,
+    retrieval_config_revision,
+)
 from composition.shared.retrieval import retrieval_budget
 from composition.shared.stores import (
     open_chunk_store,
+    open_document_store,
     open_knowledge_bases,
 )
 from composition.shared.tracing import open_tracing
@@ -26,12 +33,18 @@ from domain.citation import CitationPolicy
 from infrastructure.config.settings import Settings, libpq_dsn, load_settings
 from infrastructure.db.stores.conversation_store import SqlAlchemyConversationStore
 from infrastructure.parsing.token_counter import TiktokenTokenCounter
+from infrastructure.redis.client import open_client
 from infrastructure.retrieval.dense_channel import DenseChannel
 from infrastructure.retrieval.keyword_channel import KeywordChannel
 
 if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+    from application.knowledge.contracts import CorpusRevision
+    from application.retrieval.cache import CacheRebuildLockPort, RetrievalCachePort
     from application.retrieval.channels import RetrievalChannel
     from application.shared.health import HealthService
+    from application.shared.rate_limit import RateLimitGuard
     from infrastructure.db.engine import Database
     from infrastructure.observability.langfuse_tracing import Tracing
     from infrastructure.providers.siliconflow_chat import SiliconFlowChat
@@ -48,34 +61,44 @@ class AgentRuntime:
     health: HealthService
     knowledge_bases: KnowledgeBaseService
     context: RunContext
+    rate_limits: RateLimitGuard
+    retrieval_cache: RetrievalCachePort
+    cache_rebuild_lock: CacheRebuildLockPort
+    corpus_revision: CorpusRevision
+    retrieval_config_revision: str
     tracing: Tracing
     database: Database
     vector_index: PgVectorChildChunkIndex
     embedding: SiliconFlowEmbeddingProvider
     chat: SiliconFlowChat
     reranker: SiliconFlowReranker
+    redis: Redis | None
     checkpoints_dsn: str
     checkpoints_pool_size: int
 
     async def close(self) -> None:
-        """依序安全释放模型适配器与数据库连接池。"""
+        """依序安全释放模型适配器、数据库连接池与业务 Redis 客户端。"""
         await self.embedding.close()
         await self.chat.close()
         await self.reranker.close()
         self.tracing.shutdown()
         await self.database.dispose()
+        if self.redis is not None:
+            await self.redis.aclose()
 
 
 def build_agent_runtime() -> AgentRuntime:
     """加载配置并装配 Agent 运行时各层依赖。"""
     settings = load_settings()
     database = open_database(settings, pool_size=settings.agent_database_pool_size)
+    redis = open_client(settings)
     tracing = open_tracing(settings)
     vector_index = open_vector_index(settings, database=database)
     embedding = open_embedding_provider(settings)
     chat = open_chat(settings)
     reranker = open_reranker(settings)
     knowledge_bases_store = open_knowledge_bases(database)
+    document_store = open_document_store(database)
     chunk_store = open_chunk_store(database)
     counter = TiktokenTokenCounter()
 
@@ -127,12 +150,18 @@ def build_agent_runtime() -> AgentRuntime:
             ),
             history_messages=settings.chat_history_messages,
         ),
+        rate_limits=open_rate_limit_guard(settings, redis),
+        retrieval_cache=open_retrieval_cache(settings, redis),
+        cache_rebuild_lock=open_cache_rebuild_lock(settings, redis),
+        corpus_revision=document_store,
+        retrieval_config_revision=retrieval_config_revision(settings),
         tracing=tracing,
         database=database,
         vector_index=vector_index,
         embedding=embedding,
         chat=chat,
         reranker=reranker,
+        redis=redis,
         checkpoints_dsn=libpq_dsn(settings.database_url.get_secret_value()),
         checkpoints_pool_size=settings.checkpoint_pool_size,
     )

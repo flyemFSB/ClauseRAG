@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from api.knowledge_schemas import (
     DocumentDetailResponse,
@@ -14,6 +14,7 @@ from api.knowledge_schemas import (
     IngestionJobResponse,
     ParseRetryResponse,
 )
+from api.request_limits import RateLimitGuardDependency, client_host
 from application.knowledge.document_catalog import DocumentCatalog
 from domain.identity import PLATFORM_OWNER_ID
 from domain.parsing import ParseRetryOutcome, RetryNotAllowedError
@@ -96,9 +97,16 @@ def create_documents_router() -> APIRouter:
     async def retry_document_version(
         version_id: UUID,
         response: Response,
+        request: Request,
         catalog: DocumentCatalogDependency,
+        limits: RateLimitGuardDependency,
     ) -> ParseRetryResponse:
         """手动触发文档版本的解析重试"""
+        await limits.enforce(
+            route="documents.retry",
+            principal=client_host(request),
+            limit=20,
+        )
         try:
             retry = await catalog.retry_parse(
                 owner_id=PLATFORM_OWNER_ID,

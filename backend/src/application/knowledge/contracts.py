@@ -36,6 +36,14 @@ class ParseRetryStore(Protocol):
         ...
 
 
+class CorpusRevision(Protocol):
+    """知识库可检索语料版本标识接口协议。"""
+
+    async def revision_for_knowledge_base(self, knowledge_base_id: UUID) -> str:
+        """返回语料版本标识，内容变更时返回新标识。"""
+        ...
+
+
 class DocumentStore(Protocol):
     """文档、版本与摄取任务存储接口协议"""
 

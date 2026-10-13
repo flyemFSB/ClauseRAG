@@ -13,14 +13,20 @@ from agent_runtime.graph import build_agent_graph
 from agent_runtime.runner import ConversationAgent
 from api.conversations import (
     create_conversations_router,
+    get_cache_rebuild_lock,
     get_conversation_agent,
     get_conversation_service,
+    get_corpus_revision,
     get_knowledge_base_service,
     get_query_understanding_service,
+    get_retrieval_cache,
+    get_retrieval_config_revision,
     get_retrieval_service,
 )
 from api.health import create_health_router
+from api.request_limits import get_rate_limit_guard
 from composition.api.app import bind, install_shared
+from infrastructure.redis.client import report_startup
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -35,6 +41,7 @@ def create_agent_app(runtime: AgentRuntime) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+        await report_startup(settings, runtime.redis)
         checkpoints = await GraphCheckpoints.open(
             dsn=runtime.checkpoints_dsn,
             max_connections=runtime.checkpoints_pool_size,
@@ -68,6 +75,11 @@ def create_agent_app(runtime: AgentRuntime) -> FastAPI:
     bind(app, get_knowledge_base_service, runtime.knowledge_bases)
     bind(app, get_query_understanding_service, runtime.context.understanding)
     bind(app, get_retrieval_service, runtime.context.retrieval)
+    bind(app, get_rate_limit_guard, runtime.rate_limits)
+    bind(app, get_retrieval_cache, runtime.retrieval_cache)
+    bind(app, get_cache_rebuild_lock, runtime.cache_rebuild_lock)
+    bind(app, get_corpus_revision, runtime.corpus_revision)
+    bind(app, get_retrieval_config_revision, runtime.retrieval_config_revision)
     app.include_router(create_health_router(runtime.health))
     app.include_router(create_conversations_router())
     return app

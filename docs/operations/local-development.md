@@ -2,9 +2,10 @@
 
 ## 本地基础设施拓扑
 
-系统基于 Docker Compose（`infra/compose.yaml`）一键编排底层中间件：
+系统基于 Docker Compose（`docker-compose.yml`）一键编排底层中间件：
 - **ParadeDB（PostgreSQL 18 + pgvector + pg_search）**：存储业务数据、版本、切片、任务流水线事实及 LangGraph 检查点，同时承载 pgvector HNSW 向量索引与 BM25 关键词索引；
 - **RabbitMQ 4**：平台唯一业务异步任务队列；
+- **Redis**：可降级的派生基础设施（固定窗口限流、检索调试缓存与回源协调锁）。业务键空间使用库 0，Langfuse 独占库 1；PostgreSQL 始终是业务事实源，Redis 故障、重启或淘汰不改变任何业务事实；
 - **RustFS / S3**：存储原始文件与不可变解析 Markdown 及切片制品；
 - **Langfuse 栈**（ClickHouse、Web 及 Worker）：提供 LLM 调用与检索追踪（复用外部 PG、Redis 与 RustFS）。
 
@@ -36,8 +37,8 @@ pnpm exec vp dev
 仓库不再提供平台绑定的便捷脚本：最终部署目标是 Debian 服务器，`.ps1`/`.bat` 之类的资产一律不进仓库。开发循环用下面这几条原生命令，在 Debian 与 Windows（Git Bash / WSL）上完全一致：
 
 ```bash
-# 1. 只起基础设施（PostgreSQL/ParadeDB、RabbitMQ、RustFS 等）
-docker compose -f infra/compose.yaml up -d --wait
+# 1. 只起基础设施（PostgreSQL/ParadeDB、RabbitMQ、RustFS、Redis 等）
+docker compose up -d --wait
 
 # 2. 首次或改了模型后建表（幂等；改过模型要用 schema-reset，它会先清空）
 uv run python -m cli schema-init
@@ -49,6 +50,11 @@ uv run python -m agent_runtime.main  # Agent 运行时 (8001)
 uv run python -m worker.main         # 摄取流水线 Worker
 pnpm --dir frontend run dev          # 前端 dev server (5173，反代两个后端)
 ```
+
+宿主进程读仓库根 `.env`（正在运行的容器由 `docker-compose.yml` 透传同名开关，并把 `REDIS_URL` 指向服务名）：业务 Redis 能力
+由 `REDIS_ENABLED` 总开关加 `REDIS_RATE_LIMIT_ENABLED`、`REDIS_CACHE_ENABLED` 分别开关，`REDIS_URL` 指向库 0。
+总开关关闭时进程不创建客户端、不探活、也不影响启动；开启后 Redis 不可用时限流按 fail-closed 返回 503 并带
+`Retry-After`，低风险读接口与检索缓存按 fail-open 旁路 PostgreSQL，业务链路不中断。
 
 ---
 
@@ -97,12 +103,12 @@ pnpm --dir frontend run check
 pnpm --dir frontend run test
 
 # 2. 运行时验收（全栈）
-docker compose -f infra/compose.yaml --profile app up -d --build --wait
+docker compose --profile app up -d --build --wait
 curl -fsS http://localhost:5173/health/ready
 curl -fsS http://localhost:5173/api/v1/config
 ```
 
-`--wait` 等 `api`、`agent`、`worker`、`web` 全部 healthy；`schema-init` 幂等且只跑一次。看日志用 `docker compose -f infra/compose.yaml logs -f rag-api`；停栈用同命令的 `down`（去掉 `-v` 以免连数据卷一起删）。
+`--wait` 等 `api`、`agent`、`worker`、`web` 全部 healthy；`schema-init` 幂等且只跑一次。看日志用 `docker compose logs -f api`；停栈用同命令的 `down`（去掉 `-v` 以免连数据卷一起删）。
 
 
 ## 异常任务排查与状态恢复原则

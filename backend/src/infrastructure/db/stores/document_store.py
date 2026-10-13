@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Text, cast, delete, func, select
 
 from domain.cleanup import CleanupKind
 from domain.knowledge import (
@@ -284,6 +284,24 @@ class SqlAlchemyDocumentStore:
                 )
             )
             return None if row is None else to_parse_artifact(row)
+
+    async def revision_for_knowledge_base(self, knowledge_base_id: UUID) -> str:
+        """获取知识库语料版本标识，基于文档版本数量与最近更新时间生成。"""
+        async with self._sessions() as session:
+            row = (
+                await session.execute(
+                    select(
+                        func.count(DocumentVersionRow.id),
+                        func.coalesce(
+                            cast(func.max(DocumentVersionRow.updated_at), Text),
+                            "none",
+                        ),
+                    )
+                    .join(DocumentRow, DocumentRow.id == DocumentVersionRow.document_id)
+                    .where(DocumentRow.knowledge_base_id == knowledge_base_id)
+                )
+            ).one()
+        return f"{row[0]}:{row[1]}"
 
     async def delete(self, owner_id: UUID, document_id: UUID) -> bool:
         """删除文档及其所有版本、作业与分块，并同步记录清理意向。"""

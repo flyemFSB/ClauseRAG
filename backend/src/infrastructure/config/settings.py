@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Literal, Self
+from urllib.parse import urlparse
 
 from pydantic import (
     Field,
@@ -65,6 +66,35 @@ class Settings(BaseSettings):
 
     database_url: SecretStr
     rabbitmq_url: SecretStr
+
+    # 业务 Redis 派生能力配置（限流、检索调试缓存与并发锁）
+    redis_enabled: bool = False
+    redis_url: SecretStr | None = None
+    redis_key_prefix: str = Field(default="clauserag", min_length=1, max_length=64)
+    redis_connect_timeout_seconds: float = Field(default=1, gt=0, le=30)
+    redis_socket_timeout_seconds: float = Field(default=1, gt=0, le=30)
+    redis_health_timeout_seconds: float = Field(default=1, gt=0, le=30)
+    redis_max_connections: int = Field(default=32, ge=1, le=1000)
+    redis_rate_limit_enabled: bool = False
+    redis_cache_enabled: bool = False
+    redis_cache_ttl_seconds: int = Field(default=60, ge=1, le=3600)
+    redis_cache_ttl_jitter_seconds: int = Field(default=10, ge=0, le=600)
+    redis_cache_lock_blocking_timeout_seconds: float = Field(default=0.15, ge=0, le=5)
+    redis_cache_lock_timeout_seconds: int = Field(default=30, ge=1, le=300)
+    redis_max_cache_value_bytes: int = Field(default=1048576, ge=1024, le=16777216)
+
+    @model_validator(mode="after")
+    def _keep_the_business_redis_isolated(self) -> Self:
+        """校验业务 Redis 配置有效性，确保不与 Langfuse 冲突。"""
+        if self.redis_enabled and self.redis_url is None:
+            raise ValueError("REDIS_ENABLED 为真时必须配置 REDIS_URL")
+        if self.redis_url is not None:
+            database = urlparse(self.redis_url.get_secret_value()).path.strip("/")
+            if database == "1":
+                raise ValueError(
+                    "业务 Redis 不得使用 Langfuse 所在的库 1；请改用独立实例或独立库（如库 0）"
+                )
+        return self
 
     s3_endpoint_url: str = "http://127.0.0.1:9000"
     s3_region: str = "us-east-1"
