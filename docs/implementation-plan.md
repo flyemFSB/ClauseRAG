@@ -4,7 +4,7 @@
 - 规范化 `backend/`、`frontend/`、`infra/`、`docs/` 分层架构与目录树；
 - 锁定 Python 3.12 与 Node 24 基础环境；
 - 生成并权威锁定 `uv.lock` 与 `frontend/pnpm-lock.yaml`；
-- 编排 `infra/compose.yaml` 本地中间件拓扑；
+- 编排 `docker-compose.yml` 本地中间件拓扑；
 - 实现强类型配置校验、结构化日志与 `/health/*` 就绪探针。
 
 ---
@@ -58,5 +58,5 @@
 ---
 
 ## Phase 7：真实容器全业务闭环终验
-- 功能全部就绪后，一条命令完成构建、迁移、启动与健康等待：`docker compose -f infra/compose.yaml --profile app up -d --build --wait`；
+- 功能全部就绪后，一条命令完成构建、迁移、启动与健康等待：`docker compose --profile app up -d --build --wait`；
 - 在 nginx 单一入口上验证核心业务场景（`/health/ready`、`/api/v1/config`，加一次真实文档问答），验收结论以响应原文为准。

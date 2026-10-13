@@ -182,7 +182,7 @@ $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
 
 ```bash
 # 启动全栈（基础设施 + 一次性 schema-init + API + Agent + Worker + Web 前端）并等待就绪
-docker compose -f infra/compose.yaml --profile app up -d --build --wait
+docker compose --profile app up -d --build --wait
 
 # 验证各依赖与服务健康状态
 curl -fsS http://localhost:5173/health/ready
@@ -192,7 +192,7 @@ curl -fsS http://localhost:5173/api/v1/config
 在浏览器打开 `http://localhost:5173` 即可立即开始使用。  
 如需停止并清理容器：
 ```bash
-docker compose -f infra/compose.yaml --profile app down
+docker compose --profile app down
 ```
 
 ---
@@ -215,11 +215,11 @@ docker compose -f infra/compose.yaml --profile app down
    且不能删掉当前连接自己的角色），其余原样保留。
 2. **新卷启动并恢复**：
    ```bash
-   docker compose -f infra/compose.yaml up -d postgres --wait
+   docker compose up -d postgres --wait
    docker cp dist/pg-migration/pg18-pre-paradedb.sql clauserag-postgres:/tmp/dump.sql
    docker exec clauserag-postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 -f /tmp/dump.sql
    ```
-3. **建扩展与索引**：`docker compose -f infra/compose.yaml --profile app up -d --build --wait`
+3. **建扩展与索引**：`docker compose --profile app up -d --build --wait`
    里的一次性 `schema-init` 服务会自动建好 `vector` / `pg_search` 扩展、业务表与两张检索索引（本地亦可运行 `uv run python -m cli schema-init`）。
 
 旧数据卷 `clauserag_postgres-data` 与 `clauserag_qdrant-data` 作为回滚工件保留，由数据负责人按保留期销毁；
@@ -237,7 +237,7 @@ cp .env.example .env
 # 编辑 .env 配置 SILICONFLOW_API_KEY 与 PADDLEOCR_API_KEY
 
 # 2. 拉起基础容器依赖，然后建表、初始化存储桶
-docker compose -f infra/compose.yaml up -d --wait
+docker compose up -d --wait
 uv run python -m cli schema-init
 uv run python -m cli storage-init
 
@@ -317,12 +317,11 @@ pnpm --dir frontend run test
 │   │   │   └── shell/         # 双工作区外壳 (ChatShell / ConsoleShell) 与路由调度
 │   │   ├── lib/               # 核心协议库 (代际栅栏 generation, sse 解析, api 客户端)
 │   │   └── routes/            # 路由定义与懒加载代码拆分
+│   └── nginx.conf             # 生产级网关路由与动静态反向代理配置
 ├── docs/                      # 核心架构规范、数据流图、引用防伪协议与 ADR 归档
 │   ├── adr/                   # 架构决策记录 (Architecture Decision Records)
 │   └── architecture/          # 系统拓扑、召回流水线、引用协议设计文档
-├── infra/
-│   ├── compose.yaml           # 本地基础设施依赖容器编排
-│   └── nginx.conf             # 生产级网关路由与动静态反向代理配置
+├── docker-compose.yml         # 中间件与全栈应用容器编排（仓库根自动发现，无需 -f）
 ├── scripts/                   # 门禁脚本、本地开发脚本、黄金评测集构建工具
 ├── DESIGN.md                  # Google 标准规范系统设计白皮书 (Design Doc)
 ├── AGENTS.md                  # AI 智能体开发工程契约与最高行动准则

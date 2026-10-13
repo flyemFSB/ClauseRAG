@@ -7,9 +7,9 @@
 # 向量检索不再有独立服务：pgvector 的 HNSW 与 pg_search 的 BM25 都跑在 postgres 里，
 # 数据与业务事实同库同事务（见 docs/research/paradedb-migration-assessment.md）。
 #
-# 凭据从环境变量读取，并具备安全的本地默认值：
-#   docker compose -f infra/compose.yaml up -d --wait
-#   docker compose --env-file .env -f infra/compose.yaml up -d --wait
+# 凭据从环境变量读取，并具备安全的本地默认值（本文件在仓库根，Compose 无需 -f 即可发现，
+# 根 .env 自动参与变量插值）：
+#   docker compose up -d --wait
 #
 # 默认配置与 `backend/src/infrastructure/config/settings.py` 严格保持一致。
 name: clauserag
@@ -28,6 +28,11 @@ x-app-environment: &app-environment
   S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-ragadmin}
   S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rag_local_secret}
   LANGFUSE_HOST: http://langfuse-web:3000
+  # 业务 Redis 配置：透传限流与缓存开关，容器内连接 redis:6379/0
+  REDIS_ENABLED: "${REDIS_ENABLED:-true}"
+  REDIS_URL: redis://:${REDIS_PASSWORD:-rag_local}@redis:6379/0
+  REDIS_RATE_LIMIT_ENABLED: "${REDIS_RATE_LIMIT_ENABLED:-true}"
+  REDIS_CACHE_ENABLED: "${REDIS_CACHE_ENABLED:-true}"
 
 services:
   postgres:
@@ -226,7 +231,7 @@ services:
   # 四个服务共用一个后端镜像与一个前端镜像（ADR-0020 的两个 HTTP 进程 + 队列 worker + SPA），
   # 靠 command 区分；不带 profile 时只起基础设施，所以宿主开发循环不受影响：
   #
-  #   docker compose -f infra/compose.yaml --profile app up -d --build --wait
+  #   docker compose --profile app up -d --build --wait
   #
   # 只发布前端一个入口（WEB_PORT）；两个后端进程只在拓扑内部可达。
 
@@ -238,10 +243,10 @@ services:
     container_name: clauserag-schema-init
     profiles: ["app"]
     build: &app-build
-      context: ..
+      context: .
       dockerfile: backend/Dockerfile
     command: ["python", "-m", "cli", "schema-init"]
-    env_file: ../.env
+    env_file: .env
     environment:
       <<: *app-environment
     depends_on:
@@ -255,7 +260,7 @@ services:
     profiles: ["app"]
     build: *app-build
     command: ["python", "-m", "api.main"]
-    env_file: ../.env
+    env_file: .env
     environment:
       <<: *app-environment
       API_PORT: "8000"
@@ -280,7 +285,7 @@ services:
     profiles: ["app"]
     build: *app-build
     command: ["python", "-m", "agent_runtime.main"]
-    env_file: ../.env
+    env_file: .env
     environment:
       <<: *app-environment
       AGENT_RUNTIME_PORT: "8001"
@@ -303,7 +308,7 @@ services:
     profiles: ["app"]
     build: *app-build
     command: ["python", "-m", "worker.main"]
-    env_file: ../.env
+    env_file: .env
     environment:
       <<: *app-environment
     depends_on:
@@ -320,7 +325,7 @@ services:
     container_name: clauserag-web
     profiles: ["app"]
     build:
-      context: ..
+      context: .
       dockerfile: frontend/Dockerfile
     ports:
       - "${WEB_PORT:-5173}:80"

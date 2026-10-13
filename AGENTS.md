@@ -53,7 +53,7 @@
 内部路径重构时直接删除过时实现，禁止新增兼容层、deprecated shim 或长期兼容双写；对外契约（`/api/*` 等稳定接口）按协议契约单独评估。严禁为了迁就旧实现而保留长期双写；因数据库平滑迁移或滚动发布所必需的临时迁移双写，必须在代码处注明移除条件（格式为 `ponytail: migration until M<X>` 并挂载清理工单），到期必须硬删除。
 
 ### 11. 运行时验收是唯一业务测试机制
-永远不要在编写代码后补写浅层单元测试冒充验证，也不要用静态检查通过代替"系统真的跑起来了"：业务正确性的唯一证据是容器路径（`docker compose -f infra/compose.yaml --profile app up -d --build --wait`）以及 nginx 入口上的真实响应与一次真实问答。前端已有 4 个 `*.test.ts` 属纯逻辑测试，继续维护，但不为了覆盖率新增测试。
+永远不要在编写代码后补写浅层单元测试冒充验证，也不要用静态检查通过代替"系统真的跑起来了"：业务正确性的唯一证据是容器路径（`docker compose --profile app up -d --build --wait`）以及 nginx 入口上的真实响应与一次真实问答。前端已有 4 个 `*.test.ts` 属纯逻辑测试，继续维护，但不为了覆盖率新增测试。
 
 ### 12. 第一性原理与原生优先
 始终基于第一性原理展开独立思考与批判性推演，直击业务与技术本质，不盲从惯性经验或表象报告；编码实现前，必须深入调研所涉技术栈的最新官方文档与推荐实践，查明框架设计哲学与原生解法；实现时全面贯彻 Ponytail（高效极简开发）阶梯——遵循标准库、平台原生机制、已有依赖内建能力的递进顺序，最大限度采用依赖原生 API 与内置能力，严禁重复造轮子或过度封装，以最短、最克制、最鲁棒的路径达成最简最佳实践（最优质的代码是无需编写的代码）。
@@ -124,7 +124,7 @@
    ```
 3. **运行时验收（全栈唯一入口）**：
    ```bash
-   docker compose -f infra/compose.yaml --profile app up -d --build --wait
+   docker compose --profile app up -d --build --wait
    ```
    它一次性做完：构建后端/前端镜像、跑一次性 `schema-init` 从模型建模、起 API/agent/worker/web 四个服务
    并等它们 healthy；随后通过 nginx 单一入口核对真实行为：
@@ -135,7 +135,7 @@
    验收结论以这些响应的原文为准；需要人看的检查（引用是否指向真实条款、SSE 是否逐帧到达）在浏览器里用真实文档做一遍，不允许用“静态检查通过”替代。
 4. **本地开发循环**（改代码看效果，不重建镜像）：容器只跑依赖，三个进程与前端跑在宿主上。
    ```bash
-   docker compose -f infra/compose.yaml up -d --wait            # 只起基础设施
+   docker compose up -d --wait            # 只起基础设施
    uv run python -m cli schema-init                             # 首次或改了模型后
    uv run python -m cli storage-init
    uv run python -m api.main & uv run python -m agent_runtime.main & uv run python -m worker.main &

@@ -75,7 +75,7 @@ FROM pg_available_extensions WHERE name IN ('vector', 'pg_search');
 | `backend/src/composition/shared/qdrant.py`、agent/worker/cli runtime | 构造并关闭 Qdrant client | 改装配为共用 session factory 的 pgvector adapter，删除旧导入和具体类型 |
 | `backend/src/composition/shared/health.py`、`infrastructure/probes/qdrant_probe.py` | Qdrant readiness | 删除旧探针；数据库 readiness 增加扩展/schema/index 验证，不重复造健康框架 |
 | `backend/src/infrastructure/config/settings.py`、配置响应/前端设置 | Qdrant URL/key/collection/timeout | 删除旧配置；只增加确有调参需求的有界 ANN 参数，响应不暴露 DSN/凭据 |
-| `infra/compose.yaml`、`.env.example`、`scripts/dev.ps1` 及关联脚本 | QDRANT_URL、depends_on、服务/卷、宿主依赖 | 改 PG18 镜像/资源/初始化；最终移除 Qdrant 服务依赖，但不自动删除旧卷 |
+| `docker-compose.yml`、`.env.example`、`scripts/dev.ps1` 及关联脚本 | QDRANT_URL、depends_on、服务/卷、宿主依赖 | 改 PG18 镜像/资源/初始化；最终移除 Qdrant 服务依赖，但不自动删除旧卷 |
 | `pyproject.toml`、`uv.lock` | 有 `qdrant-client`、SQLAlchemy、asyncpg，无 pgvector Python adapter | 增加官方 `pgvector` Python 包并锁定；退役后移除 qdrant-client |
 | CLI storage-init/reindex/cleanup、清理用例 | 复用 VectorIndex，多处 runtime 装配 | 覆盖初始化、重新向量化、版本/知识库删除、失败补偿和关闭 |
 | README、DESIGN、架构文档、AGENTS 存储约束 | Qdrant + pg_trgm | 实施时同步 ADR、运维与契约；不添加 deprecated shim |
@@ -338,7 +338,7 @@ pwsh scripts/check.ps1
 pnpm --dir frontend run check
 pnpm --dir frontend run test
 
-docker compose -f infra/compose.yaml --profile app up -d --build --wait
+docker compose --profile app up -d --build --wait
 Invoke-WebRequest http://localhost:5173/health/ready
 Invoke-WebRequest http://localhost:5173/api/v1/config
 ```

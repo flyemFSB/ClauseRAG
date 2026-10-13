@@ -350,7 +350,7 @@ Mock 单测能证明"我按自己理解的方式调用了依赖"，证明不了"
 
 因此验证集中在容器路径上：镜像构建 → 一次性迁移 → 四个服务 healthy → nginx 单一入口上的真实响应 → 一次真实问答。代价是需要真实外部服务与更长的反馈周期；收益是"检查通过"与"上线能用"之间的距离更短。平台不保留探针脚本套件，避免留下一套只在自己机器上通过的测试资产。
 ## 8. Testing & Verification Strategy
-两层：静态门禁（Ruff / format / Pyright strict / 架构方向 / goldenset 可复现性）保证代码自洽；运行时验收（`docker compose -f infra/compose.yaml --profile app up -d --build --wait` + `/health/ready` + `/api/v1/config` + 一次真实问答）保证系统可用。完整命令与各自能证明什么，见 `docs/development/testing-strategy.md`。没有第三层，也没有探针脚本。
+两层：静态门禁（Ruff / format / Pyright strict / 架构方向 / goldenset 可复现性）保证代码自洽；运行时验收（`docker compose --profile app up -d --build --wait` + `/health/ready` + `/api/v1/config` + 一次真实问答）保证系统可用。完整命令与各自能证明什么，见 `docs/development/testing-strategy.md`。没有第三层，也没有探针脚本。
 ## 9. Rollout, Migration & Deprecation Strategy
 
 - **数据库 schema**：项目处于开发阶段，**不使用迁移框架**。schema 就是 ORM 模型的当前形状，由 `python -m cli schema-init`（容器路径下是一次性 `schema-init` 服务）显式建出：先 `CREATE EXTENSION vector` / `pg_search CASCADE`，再 `Base.metadata.create_all`。`schema-init` 只建不缺，对已有数据无副作用；改模型后用 `python -m cli schema-reset`（先 `drop_all` 再建，破坏性）。代价是没有 ALTER：`create_all` 跳过已存在的表，所以模型与真实数据库不一致只能靠重建或手工 DDL 修——这正是 `/health/ready` 要独立核对表与两个检索索引的原因。详见 ADR-0035；

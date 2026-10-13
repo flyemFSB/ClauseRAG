@@ -57,7 +57,7 @@ pnpm exec vp test      # 运行测试
 静态检查（Ruff / Pyright / 架构方向）与前端 `vp check` / `vp test` 只回答"代码是否自洽"。系统是否真的跑起来由容器路径回答：
 
 ```bash
-docker compose -f infra/compose.yaml --profile app up -d --build --wait
+docker compose --profile app up -d --build --wait
 ```
 
 `--wait` 会等四个应用服务 healthy；`schema-init` 是一次性容器，负责 `python -m cli schema-init`（从 ORM 模型建表并装好检索扩展）；两个后端进程只在拓扑内部可达，浏览器只与 `rag-web`（默认 http://localhost:5173）通信。宿主开发循环没有任何一键脚本：容器只跑依赖（`docker compose up -d --wait`），API/agent/worker 与前端用下面的原生命令跑在宿主上。

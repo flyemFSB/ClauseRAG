@@ -59,7 +59,7 @@ pnpm exec vp test     # 执行单元测试与组件交互测试
 从仓库根目录启动时，先起容器依赖再各进程单独拉起（仓库不提供平台绑定的一键脚本）：
 
 ```bash
-docker compose -f infra/compose.yaml up -d --wait   # 基础设施容器
+docker compose up -d --wait   # 基础设施容器
 uv run python -m api.main            # 业务 API (8000)
 uv run python -m agent_runtime.main  # Agent 运行时 (8001)
 pnpm --dir frontend run dev          # 前端 dev server (5173)

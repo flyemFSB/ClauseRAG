@@ -532,7 +532,7 @@ uv run ruff check backend/src
 uv run pyright backend/src
 uv run python scripts/check-architecture.py
 uv run --group eval python -m cli evaluate-ragas --mode smoke
-docker compose -f infra/compose.yaml --profile app up -d --build --wait
+docker compose --profile app up -d --build --wait
 ```
 
 一次完整的运行时验收就是最后那条命令：构建镜像、跑迁移、起四个服务并等它们 healthy，随后在 nginx 单一入口上核对 `/health/ready` 与 `/api/v1/config`。平台不再有探针脚本套件与 `dist/verify/` 报告：验收结论以真实响应与一次真实问答为准。

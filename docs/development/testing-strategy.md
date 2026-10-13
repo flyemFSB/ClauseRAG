@@ -20,7 +20,7 @@ pnpm --dir frontend run test    # 纯逻辑测试（4 个文件）
 ## 运行时验收（系统是否真的跑起来）
 
 ```bash
-docker compose -f infra/compose.yaml --profile app up -d --build --wait
+docker compose --profile app up -d --build --wait
 ```
 
 一条命令做完：构建后端与前端镜像 → 一次性 `schema-init` 服务从 ORM 模型建表并装好检索扩展 → 起 `api`、`agent`、`worker`、`web` 并等它们 healthy。随后核对 nginx 单一入口上的真实响应：

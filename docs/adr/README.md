@@ -3,7 +3,7 @@
 > **关于本文中的 `Evidence:` 与 `RAG_*` 行**：ADR-0001 到 ADR-0032 写作时，平台的验证机制是
 > `scripts/probes/` 下的探针脚本套件，环境变量带 `RAG_` 前缀（`RAG_DATABASE_URL` 等），
 > schema 由 Alembic 迁移（`backend/migrations/`）演进；三者后来都变了——探针套件已随展示交付删除，
-> 验证入口改为容器路径（`docker compose -f infra/compose.yaml --profile app up -d --build --wait`
+> 验证入口改为容器路径（`docker compose --profile app up -d --build --wait`
 > 加 nginx 入口上的真实响应，见 `docs/development/testing-strategy.md`），环境变量去掉了前缀
 > （`RAG_DATABASE_URL` 现在就叫 `DATABASE_URL`），迁移框架也整个去掉了（ADR-0035，schema 改由
 > `python -m cli schema-init` 从 ORM 模型建立）。旧条目里的路径与前缀保留原文，因为那是做出该
@@ -882,7 +882,7 @@ once per run rather than once per observation.
 Evidence: `backend/src/infrastructure/observability/langfuse_tracing.py`;
 `backend/src/agent_runtime/runner.py` (one observation per run);
 `backend/src/application/ingestion/document_ingestion.py` (one per stage attempt);
-`infra/compose.yaml` (the stack and its isolation); `scripts/probes/observability.ps1` (the stack's
+`docker-compose.yml` (the stack and its isolation); `scripts/probes/observability.ps1` (the stack's
 health with the configured keys, a run's trace readable by its run id, the ingestion stages' traces,
 and the absence of document text); `docs/research/official-docs-langfuse-aegra.md`.
 
@@ -1621,5 +1621,5 @@ review warned is lossy if done silently. Re-adding a `check` script means writin
 deployment platform.
 
 Evidence: `backend/src/infrastructure/db/schema.py`; `backend/src/cli/commands/schema.py`;
-`infra/compose.yaml` (the one-shot `schema-init` service every application service waits on);
+`docker-compose.yml` (the one-shot `schema-init` service every application service waits on);
 `backend/src/infrastructure/probes/postgres_probe.py`.
