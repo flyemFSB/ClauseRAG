@@ -1,4 +1,4 @@
-# ClauseRAG — 生产级涉美商事合同审查与法务知识检索 Agentic RAG 平台
+# ClauseRAG — 生产级商务合同审查与法务知识检索 Agentic RAG 平台
 
 <div align="center">
 
@@ -8,7 +8,8 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![pgvector](https://img.shields.io/badge/pgvector-HNSW-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![ParadeDB](https://img.shields.io/badge/ParadeDB-pg__search%20BM25-1D4ED8)](https://www.paradedb.com/)
-[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-3.13-FF6600?logo=rabbitmq&logoColor=white)](https://www.rabbitmq.com/)
+[![Redis](https://img.shields.io/badge/Redis-8.x-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4.x-FF6600?logo=rabbitmq&logoColor=white)](https://www.rabbitmq.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Vite+](https://img.shields.io/badge/Vite%2B-vp-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Ruff](https://img.shields.io/badge/Ruff-Checked-261230?logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/)
@@ -19,10 +20,11 @@
 </p>
 
 <p align="center">
-  专为高可信美国商业合同审查、合规尽调与法务知识检索打造的端到端 Agentic RAG 平台。<br/>
+  专为高可信商务合同审查、合规尽调与法务知识检索打造的端到端 Agentic RAG 平台。<br/>
   每一句审查结论均严格锚定权威合同条款的版本、章节、物理行号与后端强校验原文，杜绝模型幻觉。
 </p>
 
+[业务定位](#-业务定位与设计哲学) •
 [功能特性](#-功能特性) •
 [系统拓扑](#-系统拓扑与架构) •
 [核心技术机制](#-核心技术机制) •
@@ -36,17 +38,19 @@
 
 ---
 
-## 💡 为什么选择 ClauseRAG？
+## 🎯 业务定位与设计哲学
 
-通用问答 RAG 平台面对法律合同审查时存在三大痛点：
-1. **幻觉难以溯源**：模型引述的内容看似合理，实际无法精确对应到合同具体版本与条款起止行号；
+### 为什么选择 ClauseRAG？
+在复杂的商业活动中，商业合同（如主服务协议 MSA、保密协议 NDA、SaaS 许可、采购供应协议、战略合作协议、雇佣协议等）是企业权利与义务的基石。通用问答 RAG 平台面对法律与商业合同审查时存在三大致命痛点：
+1. **幻觉难以溯源**：模型生成的审查建议看似言之凿凿，实际无法精确对应到合同具体版本、条款层级与起止物理行号；
 2. **术语检索失真**：通用向量检索擅长模糊意图，但对合同特有编号、定义词条款（Definitions）、交叉引用（Cross-references）缺乏精确字面匹配能力；
-3. **证据不足强行作答**：缺乏置信度门控机制，在召回不充分时编造合规结论，带来极高法务风险。
+3. **证据不足强行作答**：缺乏置信度门控机制，在证据召回不充分或不相干时编造合规结论，带来极高商业风险与法务隐患。
 
-**ClauseRAG** 围绕**高确定性与防伪追溯**展开设计：
-- **异构合同解析引擎**：统一纳管 PDF、DOCX、XLSX、扫描图等多源合同，标准化为结构化 Markdown；
+**ClauseRAG** 围绕**高确定性、强证据约束与防伪追溯**展开设计：
+- **通用商事协议支持**：支持各类企业商事合同与法律协议文档的解析、分块索引与审查，从结构化条款到非结构化扫描件全链路覆盖；
+- **真实基准评测保证**：内置基于业界公开权威商事合同基准（CUAD，Contract Understanding Atticus Dataset）构建的黄金评测集（Goldenset），确立可复现的多类别合同审查与引用定位评估基线；
 - **Parent-Child 树状双层分块**：Child 块负责精确检索与行级锚定，Parent 块负责富语义提示词拼接；
-- **Dense + Keyword 双通道与 RRF 融合**：pgvector 原生 HNSW 向量检索与 pg_search BM25 词项检索互补，经由应用层 RRF 融合与 Cross-Encoder 语义重排；
+- **Dense + Keyword 双通道与 RRF 融合**：PostgreSQL 18 内原生 pgvector HNSW 密集向量与 ParadeDB `pg_search` BM25 词项检索互补，同库同事务，由应用层执行确定性倒数排名融合（RRF）与交叉重排；
 - **动态证据门控（Evidence Gate）**：基于重排质量判定证据充分度，支持有界查询重写；证据不足时主动弃答（Abstain）；
 - **三层引用防伪协议（Citation Protocol）**：提示词防伪隔离、服务端证据集闭环校验、对象存储权威物理行号映射；
 - **工业级双工作区体验**：无缝切换“沉浸式合同审查工作区”与“SaaS 级法务资产与流水线控制台”。
@@ -59,8 +63,8 @@
   - 支持 `.pdf`、`.docx`、`.pptx`、`.xlsx`、`.html`、`.txt`、`.md` 及主流图像格式；
   - 自动路由：Office/PDF 文档走 AnyDoc 结构化抽取，扫描件与图像无缝升级至 PaddleOCR-VL 进行版面分析与文字识别。
 - **混合检索与深度重排**：
-  - **Dense 向量通道**：SiliconFlow `BAAI/bge-m3`（1024 维密集向量）+ PostgreSQL `child_chunk_embeddings` 的 pgvector HNSW cosine 索引；
-  - **Keyword 关键词通道**：ParadeDB `pg_search` BM25 索引，保障合同定义、法条编号与 CJK 短词的精确召回；
+  - **Dense 向量通道**：SiliconFlow `BAAI/bge-m3`（1024 维密集向量）+ PostgreSQL 18 `child_chunk_embeddings` 的 pgvector HNSW cosine 索引；
+  - **Keyword 关键词通道**：ParadeDB `pg_search` BM25 索引，保障合同定义、法条编号、大写专有名词与 CJK 短词的精确召回；
   - **应用层 RRF 融合**：Reciprocal Rank Fusion（$k=60$）统一无量纲融合双通道候选集；
   - **Cross-Encoder 交叉注意力重排**：SiliconFlow `BAAI/bge-reranker-v2-m3` 深度计算语义相关性。
 - **有界图状态机与证据门控**：
@@ -71,8 +75,12 @@
   - 模型生成阶段输出局部标记（如 `[S1]`）；
   - 后端实时校验引用合法性，剔除虚构标记，解析并回查数据库与对象存储；
   - 前端提供浮动 Popover 溯源气泡与侧边栏权威证据原文比对面板（精确展示行号、段落与文档版本）。
+- **企业级缓存与限流防护**：
+  - 集成 Redis 8 承载 API 速率限制（429 Too Many Requests），防止高频突发流量打垮模型与数据库服务；
+  - 跨进程分布式互斥锁保障长周期关键任务幂等性；
+  - 单轮检索诊断调试结果支持 TTL 智能缓存。
 - **双工作区工业级前端**：
-  - **合同审查工作区 (`/chat`)**：极简审查岛屿、流式打字机渲染、多轮对话记忆、代际栅栏（Generation Fence）阻断旧响应写回；
+  - **合同审查工作区 (`/chat`)**：极简审查工作台、流式打字机渲染、多轮对话记忆、代际栅栏（Generation Fence）阻断旧响应写回；
   - **资产控制台 (`/admin/*`)**：知识库概览、文档物理版本演进、摄取流水线任务看板（认领、租约与重试状态机监控）、单轮检索诊断调试（Retrieval Debug）及系统配置面板。
 
 ---
@@ -114,8 +122,10 @@ $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
 │     - taskiq (任务分发)    │          │    - 异构文档解析 (Parse)    │          │  - SiliconFlow (LLM / Embed)    │
 │     - taskiq.dead_letter   │          │    - 确定性分块规划 (Chunk)  │          │  - ParadeDB (PostgreSQL 18)     │
 │                            │          │    - 密集向量计算 (Embed)    │          │    事实 / 倒排 / pgvector HNSW  │
-│                            │          │    - 向量核验就绪 (Index)    │          │  - RustFS / S3 (对象存储)       │
-└────────────────────────────┘          └──────────────────────────────┘          └─────────────────────────────────┘
+│                            │          │    - 向量核验就绪 (Index)    │          │  - Redis 8 (限流 / 锁 / 缓存)   │
+└────────────────────────────┘          └──────────────────────────────┘          │  - RustFS / S3 (对象存储)       │
+                                                                                  │  - Langfuse v4 (链路可观测性)   │
+                                                                                  └─────────────────────────────────┘
 ```
 
 ---
@@ -157,10 +167,11 @@ $$\text{api} \longrightarrow \text{application} \longrightarrow \text{domain}$$
 | **关系持久化** | ParadeDB (PostgreSQL 18) + SQLAlchemy 2.0 Async | 系统唯一的事实真相来源（Single Source of Truth）；向量、关键词索引与业务事实同库同事务。 |
 | **向量检索** | pgvector 原生 HNSW cosine | `child_chunk_embeddings.embedding vector(1024)` 上的 HNSW 索引，随 WAL 复制与 PITR 一起备份；启动即受 readiness 核对。 |
 | **关键词检索** | ParadeDB `pg_search` BM25 | 真正的相关性模型而非子串扫描；默认 `unicode_words` 分词器按 CJK 单字切分，中英混排合同与定义词均能命中。 |
-| **异步队列** | RabbitMQ + Taskiq | RabbitMQ 作为平台**唯一的业务异步消息队列**；Taskiq 提供异步消费与重试；严禁将 Redis 用作队列。 |
+| **缓存与限流** | Redis 8 (redis:8-alpine) | 承载 API 速率限制、分布式互斥锁与单轮检索调试缓存；严禁将 Redis 用作业务消息队列。 |
+| **异步队列** | RabbitMQ + Taskiq | RabbitMQ 作为平台**唯一的业务异步消息队列**；Taskiq 提供异步消费与重试。 |
 | **对象存储** | RustFS / AWS S3 兼容协议 | 高效存储原始合同文件、解析后的标准 Markdown 制品及 JSONL 分块元数据。 |
-| **全链路观测** | Langfuse + 结构化日志 (structlog) | 追踪 LLM 调用链、Token 消耗、检索延迟与证据门控决策；脱敏敏感数据。 |
-| **前端架构** | React 19 + TypeScript 5 + Vite+ (`vp`) | 特性优先（Feature-First）模块划分；TanStack Query 接管异步状态；Tailwind CSS v4 单源样式设计。 |
+| **全链路观测** | Langfuse v4 + ClickHouse + structlog | 追踪 LLM 调用链、Token 消耗、检索延迟与证据门控决策；脱敏敏感数据。 |
+| **前端架构** | React 19 + TypeScript 5 + Vite+ (`vp`) | 特性优先（Feature-First）模块划分；TanStack Query 接管异步状态；Tailwind CSS 单源样式设计。 |
 
 ---
 
@@ -189,41 +200,11 @@ curl -fsS http://localhost:5173/health/ready
 curl -fsS http://localhost:5173/api/v1/config
 ```
 
-在浏览器打开 `http://localhost:5173` 即可立即开始使用。  
+在浏览器打开 `http://localhost:5173` 即可立即进入工作台开始合同审查。  
 如需停止并清理容器：
 ```bash
 docker compose --profile app down
 ```
-
----
-
-### 从 Qdrant 版本升级（一次性）
-
-向量存储已经内置到 ParadeDB 镜像里，旧 `QDRANT_*` 配置项已删除，Qdrant 服务也不再启动。
-升级需要做三件事，顺序不能变：
-
-1. **逻辑备份**（镜像从 Alpine 换到 Debian trixie，同 major 不代表 locale/collation 可互换，
-   不能把旧数据卷直接挂给新镜像）：
-   ```bash
-   docker run -d --name pg-old -v clauserag_postgres-data:/var/lib/postgresql \
-     -e POSTGRES_USER=rag -e POSTGRES_PASSWORD=rag_local postgres:18-alpine
-   docker exec pg-old sh -c "pg_dumpall -U rag --clean --if-exists > /tmp/dump.sql"
-   docker cp pg-old:/tmp/dump.sql dist/pg-migration/pg18-pre-paradedb.sql
-   docker rm -f pg-old
-   ```
-   删掉 dump 里的 `DROP ROLE IF EXISTS rag;` / `CREATE ROLE rag;` 两行（角色由镜像环境变量建立，
-   且不能删掉当前连接自己的角色），其余原样保留。
-2. **新卷启动并恢复**：
-   ```bash
-   docker compose up -d postgres --wait
-   docker cp dist/pg-migration/pg18-pre-paradedb.sql clauserag-postgres:/tmp/dump.sql
-   docker exec clauserag-postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 -f /tmp/dump.sql
-   ```
-3. **建扩展与索引**：`docker compose --profile app up -d --build --wait`
-   里的一次性 `schema-init` 服务会自动建好 `vector` / `pg_search` 扩展、业务表与两张检索索引（本地亦可运行 `uv run python -m cli schema-init`）。
-
-旧数据卷 `clauserag_postgres-data` 与 `clauserag_qdrant-data` 作为回滚工件保留，由数据负责人按保留期销毁；
-它们不会再被本拓扑挂载。向量数据不迁移：`child_chunk_embeddings` 从空表开始，由重新向量化填充。
 
 ---
 
@@ -254,7 +235,7 @@ pnpm --dir frontend run dev          # 前端 dev server http://localhost:5173
 uv run python -m cli schema-reset
 ```
 
-仓库不提供平台绑定的一键脚本（`.ps1`/`.bat`）：最终部署目标是 Debian 服务器，本地与部署用同一套命令。
+> **跨平台契约**：仓库严格遵循平台中立性，不提供特定操作系统脚本（`.ps1`/`.bat`），本地与部署环境统一使用 Docker Compose 与标准 Python 命令。
 
 ---
 
@@ -270,6 +251,7 @@ uv sync --locked --group eval
 uv run ruff check backend/src
 uv run ruff format --check backend/src
 uv run pyright backend/src
+uv run python -c "import api.main, agent_runtime.main, worker.main, cli.main"
 uv run python scripts/check-architecture.py
 uv run python scripts/build-goldenset.py --verify
 
@@ -295,13 +277,13 @@ pnpm --dir frontend run test
 ```text
 ├── backend/
 │   └── src/
-│       ├── api/               # FastAPI REST 路由接入层、HTTP 异常映射与配置契约
-│       ├── application/       # 业务用例服务层 (Ingestion, Retrieval, Chat, Citations)
+│       ├── api/               # FastAPI REST 路由接入层、HTTP 异常映射、限流与配置契约
+│       ├── application/       # 业务用例服务层 (Ingestion, Retrieval, Chat, Citations, RateLimit)
 │       ├── domain/            # 纯业务领域模型 (Document, Chunk, Citation, Knowledge)
-│       ├── infrastructure/    # 外部协议适配器 (PostgreSQL/pgvector, RabbitMQ, S3, SiliconFlow)
+│       ├── infrastructure/    # 外部协议适配器 (PostgreSQL/pgvector, Redis, RabbitMQ, S3, SiliconFlow)
 │       ├── composition/       # 依赖注入容器装配工厂与运行时编排
 │       ├── agent_runtime/     # LangGraph 审查 Agent 有界图状态机与流式引擎
-│       ├── worker/            # Taskiq 异步摄取流水线任务消费者
+│       ├── worker/            # Taskiq 异步摄取流水线任务消费者与调度器
 │       └── cli/               # 平台运维管理命令行工具集 (schema-init, storage-init, reindex, cleanup)
 ├── frontend/
 │   ├── src/
@@ -322,7 +304,7 @@ pnpm --dir frontend run test
 │   ├── adr/                   # 架构决策记录 (Architecture Decision Records)
 │   └── architecture/          # 系统拓扑、召回流水线、引用协议设计文档
 ├── docker-compose.yml         # 中间件与全栈应用容器编排（仓库根自动发现，无需 -f）
-├── scripts/                   # 门禁脚本、本地开发脚本、黄金评测集构建工具
+├── scripts/                   # 门禁脚本、架构检查工具、黄金评测集构建工具
 ├── DESIGN.md                  # Google 标准规范系统设计白皮书 (Design Doc)
 ├── AGENTS.md                  # AI 智能体开发工程契约与最高行动准则
 └── pyproject.toml / uv.lock   # Python 依赖清单与哈希锁定
@@ -334,7 +316,7 @@ pnpm --dir frontend run test
 
 - **系统技术设计白皮书**：查阅 [DESIGN.md](DESIGN.md)（遵循 Google Design Doc 标准编撰）。
 - **智能体开发工程契约**：查阅 [AGENTS.md](AGENTS.md)（定义核心架构十二大铁律）。
-- **三通道到双通道演进与架构决策**：查阅 [docs/adr/](docs/adr/)。
+- **架构决策记录**：查阅 [docs/adr/](docs/adr/)。
 - **引用防伪协议规范**：查阅 [docs/architecture/citation-protocol.md](docs/architecture/citation-protocol.md)。
 - **检索与融合流水线**：查阅 [docs/architecture/retrieval-pipeline.md](docs/architecture/retrieval-pipeline.md)。
 
@@ -342,7 +324,7 @@ pnpm --dir frontend run test
 
 ## ⚖️ 免责声明
 
-ClauseRAG 旨在为涉美商务合同审查人员、企业法务与执业律师提供高确定性的合同条款检索、语义对比与条款分析辅助工具。  
+ClauseRAG 旨在为商务合同审查人员、企业法务与执业律师提供高确定性的合同条款检索、语义对比与条款分析辅助工具。  
 本系统所输出的审查结论与回答**不构成正式的法律意见或执业律师代理意见**。具体商业合同签署、条款修改与法律争议决策应由具备相应司法管辖区执业资格的专业律师最终审定。
 
 ---

@@ -12,11 +12,11 @@ React + TypeScript + Vite+ (vp CLI), TanStack Router/Query, Base UI, lucide, Tai
 
 ## Users
 
-涉美业务企业法务团队、执业律师、商业合同审查人员及合规审计人员，在面对复杂商业协议（MSA、NDA、SaaS 许可、采购供应协议等）的审查、条款比对、风险排查场景下，需要快速获取可信、可追溯至具体合同条款行号的权威解答与风险提示。
+企业法务团队、执业律师、商业合同审查人员及合规审计人员，在面对复杂商业协议（如主服务协议 MSA、保密协议 NDA、SaaS 许可协议、采购供应协议、战略合作协议等）的审查、条款比对、风险排查场景下，需要快速获取可信、可追溯至具体合同条款行号的权威解答与风险提示。
 
 ## Product Purpose
 
-提供基于 LangGraph 的 Agentic RAG 平台，面向美国商业合同与法律协议文档（MSA/NDA/SOW/SaaS License/Employment Agreement）的解析、条款索引、双通道混合检索与流式问答。核心价值是让法务与商务人员快速获得带条款引用验证的准确答案，确保每一条审查意见都有据可查。
+提供基于 LangGraph 的 Agentic RAG 平台，面向通用商业合同与商事法律协议文档（MSA/NDA/SOW/SaaS License/采购销售合同/雇佣协议等）的解析、条款索引、双通道混合检索与流式问答。核心价值是让法务与商务人员快速获得带条款引用验证的准确答案，确保每一条审查意见都有据可查。
 
 ## Positioning
 
@@ -42,14 +42,14 @@ React + TypeScript + Vite+ (vp CLI), TanStack Router/Query, Base UI, lucide, Tai
 - **设计规范**：具体 token、组件皮肤与状态词以 `DESIGN.md` 为准；本文件的视觉描述与 `DESIGN.md` 冲突时，以 `DESIGN.md` 为准。
 - **组件约束**：仅使用 Base UI 内置组件与 `lucide-react` 字形，不允许自定义组件库。
 - **字体**：系统默认字体栈（-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif）。
-- **语气**：专业、严谨、客观、可信，严格使用美国商事合同法律术语，避免过度营销化语言；在法律场景下强调责任边界准确性与条款可追溯性。
+- **语气**：专业、严谨、客观、可信，严格使用商事合同法律术语，避免过度营销化语言；在法律场景下强调责任边界准确性与条款可追溯性。
 
 ## Evidence on Hand
 
 - 已有后端 API/SSE 契约（`docs/architecture/frontend-contract.md`）。
 - 已有领域模型、数据流、摄取和检索管道规范（`docs/architecture/`）。
 - 前端工程层已部署基础设施（TanStack Query, typed API schemas, SSE client）。
-- **缺失**：真实涉密合同文档示例、企业律所 logo。原型阶段将使用合成商业合同占位内容，标记为示意数据。
+- **评测基准**：黄金评测集（Goldenset）基于公开标准商事合同语料（CUAD 数据集）构建，支持客观复现多类别条款抽取、检索召回率与引用防伪定位评测；生产环境面向通用企业商务合同知识库。
 
 ## Product Principles
 

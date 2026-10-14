@@ -7,13 +7,13 @@
 
 ## 1. 核心使命与架构背景
 
-你正在为 **ClauseRAG** 开发核心系统代码。ClauseRAG 是一套面向高可信美国商业合同审查与法务知识检索的生产级 Agentic RAG 平台。系统的核心创意北极星是**「可追溯的记录」（The Traceable Record）**——每一句审查结论与回答必须拥有可查验的权威合同条款坐标（文档、版本、行号、页码与后端校验的原文）。
+你正在为 **ClauseRAG** 开发核心系统代码。ClauseRAG 是一套面向高可信商务合同审查与法务知识检索的生产级 Agentic RAG 平台。系统的核心创意北极星是**「可追溯的记录」（The Traceable Record）**——每一句审查结论与回答必须拥有可查验的权威合同条款坐标（文档、版本、行号、页码与后端校验的原文）。
 
 在修改或新增任何代码前，请确保已查阅：
 - `README.md`：项目全景、系统拓扑与快速开始。
 - `DESIGN.md`：Google 标准架构设计白皮书与详细子系统规范。
 - `docs/architecture/system-overview.md`：系统架构分层与依赖方向。
-- `docs/architecture/retrieval-pipeline.md`：三通道召回、RRF 与重排流水线。
+- `docs/architecture/retrieval-pipeline.md`：双通道混合召回、RRF 与重排流水线。
 - `docs/architecture/citation-protocol.md`：端到端引用防伪协议。
 
 ---

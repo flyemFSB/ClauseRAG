@@ -1,4 +1,4 @@
-# Design Doc: ClauseRAG — US Commercial Contract Review Agentic RAG Platform
+# Design Doc: ClauseRAG — Commercial Contract Review Agentic RAG Platform
 
 | Metadata | Details |
 | :--- | :--- |
@@ -13,7 +13,7 @@
 
 ## 1. Overview & Executive Summary
 
-**ClauseRAG** 是一套专为涉美商业合同审查、法律条款检索与跨协议风险穿透分析打造的 **Agentic RAG（智能体检索增强生成）平台**。
+**ClauseRAG** 是一套专为商务合同审查、法律条款检索与跨协议风险穿透分析打造的 **Agentic RAG（智能体检索增强生成）平台**。
 
 系统以**「可追溯的记录」（The Traceable Record）**为创意北极星（Creative North Star）：每一句由大模型生成的审查建议或条款分析，均必须能够精确回溯至权威合同文档的具体版本、Markdown 标题/条款路径、行号区间和由后端严格校验的原文字片，彻底杜绝虚假幻觉对商业决策与法律合规带来的灾难性后果。
 
@@ -30,7 +30,7 @@
 ## 2. Context & Motivation
 
 ### 2.1 业务背景与合同审查痛点
-涉美商业合同审查（如 Master Services Agreement、NDA、SaaS Agreements 等）对 RAG 系统的准确度与责任边界有着极其严苛的要求：
+现代商事与商务合同审查（如 Master Services Agreement、NDA、SaaS Agreements、采购供应协议等）对 RAG 系统的准确度与责任边界有着极其严苛的要求：
 - **致命的幻觉风险**：通用 RAG 系统依赖概率匹配生成回答，模型常在缺乏充分合同证据时自行推演或编造未约定的权利义务，可能导致数百万美元的法律责任或商业谈判失利。
 - **引用不可验证**：多数系统采用“生成后由模型自己标注来源”，模型经常胡乱生成虚构的参考条款或错位的段落序号。
 - **异构文献版面复杂**：商业合同、附件工作说明书（SOW）与过往签署件多为扫描版 PDF，传统纯文本抽取丢失表格结构、上下级条款层级（Article/Section）与页码定位。
@@ -49,12 +49,12 @@
 - **G3（证据有界控制与主动弃答）**：建立证据门控节点；当召回证据不足以支撑法律审查结论时，系统必须明确标识并主动放弃生成，而非臆测。
 - **G4（高内聚分层与单向依赖）**：严格贯彻 `api → application → domain` 分层，外部系统全部隔离在 `infrastructure`，由 `composition` 容器组装。
 - **G5（生产级并发与容错）**：RabbitMQ 作为唯一异步任务队列；任务投递具备幂等去重；所有外部 I/O 均设置有界超时与错误分类；前端杜绝异步竞态。
-- **G6（真实容器验证优先）**：以真实 Docker 容器环境端到端探针测试作为验收唯一依据，并在 `dist/verify/` 输出完整证据工件。
+- **G6（真实容器验证优先）**：以真实 Docker 容器环境（`docker compose --profile app up -d --build --wait`）与 nginx 入口真实响应作为验收唯一依据。
 
 ### 3.2 Non-Goals
 - **NG1（第一期不包含公网爬虫）**：首发版本不提供任意 Web URL 的实时动态爬取，所有知识必须通过显式文档上传导入。
 - **NG2（不采用无界自我循环 Agent）**：坚决禁止无终止条件的自我反思（Self-reflection）或死循环检索；LangGraph 执行图严格限制单次运行最多重试 2 轮。
-- **NG3（不将 Redis 用作持久业务队列）**：任务传递与状态流转完全由 RabbitMQ 与 PostgreSQL 承担；Redis 当前不承担任何业务职责，也已从依赖、就绪探针与配置中移除。
+- **NG3（不将 Redis 用作持久业务队列）**：任务传递与状态流转完全由 RabbitMQ 与 PostgreSQL 承担；Redis 仅用于临时缓存、分布式锁与速率限制，严禁作为业务消息队列使用。
 - **NG4（不为前端编写脱离业务的浅层单测）**：前端重视核心流式规约与代际隔离的真实逻辑测试，不引入大面积无意义的 DOM 浅层快照。
 
 ---
@@ -98,7 +98,8 @@
 │  - 摄取调度           │          │  - PaddleOCR / AnyDoc    │          │   - SiliconFlow API    │
 │  - 异步清理通道       │          │  - 分块生成与向量构建    │          │   - ParadeDB/PostgreSQL│
 └───────────────────────┘          │  - 向量索引与检索       │          │     (pgvector + pg_search) │
-                                   └──────────────────────────┘          │   - RustFS / S3 存储   │
+                                   └──────────────────────────┘          │   - Redis 8 (缓存与限流)│
+                                                                         │   - RustFS / S3 存储   │
                                                                          │   - Langfuse 观测平台  │
                                                                          └────────────────────────┘
 ```
@@ -341,9 +342,9 @@ event: run_completed   --> {"answer": "...", "citations": ["S1"], "evidence_stat
 - **考量方案**：把融合下推到数据库（pgvector + pg_search 的混合查询，或 ParadeDB 自身的向量索引），或退回两个独立检索系统。
 - **决策理由**：向量与 BM25 现在确实同库，但**分值仍然不可比**：余弦相似度与 BM25 相关性分不在同一量纲上，相加需要一个不成文的权重，而那个权重没有任何在真实合同语料上的标定依据。RRF 只用名次，对分数量纲免疫，也不把应用层的门控、重排与引用校验拆到两个地方。与此同时，融合留在应用层意味着换检索引擎不动检索语义——本次从 Qdrant + pg_trgm 换成 pgvector + BM25 时，通道名、RRF 常数与门控阈值一行未改。代价是多一次网络往返与一份需要自己写的融合代码，这是已知且可接受的。
 
-### 7.2 为什么使用 RabbitMQ，坚决不使用 Redis 作为队列？
+### 7.2 为什么使用 RabbitMQ 承担业务消息队列，而 Redis 仅用于缓存与限流？
 - **考量方案**：使用 Redis List / Streams 作为后台任务队列。
-- **决策理由**：Redis 是基于内存的缓存存储，在机器宕机或内存压力下容易发生数据淘汰（Eviction）或持久化丢包。RabbitMQ 具备完备的死信队列（DLX）、消息持久化确认（Message Acknowledgement）、排他消费与背压（Prefetch）机制，能够确切保证文档摄取任务“不丢失、不重复执行”。
+- **决策理由**：Redis 是基于内存的高速键值系统，平台将其用于请求速率限制（Rate Limiting）、分布式互斥锁与单轮检索调试缓存；在任务队列维度，机器故障或内存压力下纯内存队列容易发生数据淘汰（Eviction）或持久化丢包。RabbitMQ 具备完备的死信队列（DLX）、消息持久化确认（Message Acknowledgement）、排他消费与背压（Prefetch）机制，能够确切保证长周期文档摄取任务“不丢失、不重复执行”。两者的工程职责被严格解耦与隔离。
 
 ### 7.3 为什么用真实容器验收，而不是大面积 Mock 单元测试？
 Mock 单测能证明"我按自己理解的方式调用了依赖"，证明不了"PostgreSQL 真的接受了这条约束、pgvector 真的把这条向量检索出来、RabbitMQ 真的把这条消息送达了"。本平台的业务不变量恰恰长在那些边界上：复合外键、行号坐标、门控阈值、租约认领、引用回表。
