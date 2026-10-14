@@ -241,6 +241,40 @@ def rank_channel_matches(matches: Sequence[ChannelMatch]) -> tuple[ChannelHit, .
     )
 
 
+def fuse_query_hits(
+    ranked_hits: Sequence[Sequence[ChannelHit]],
+    *,
+    rank_constant: int,
+) -> tuple[ChannelHit, ...]:
+    """融合同一渠道内多个查询各自的排名（查询级 RRF），输出去重后的统一 1..N 排名"""
+    scores: dict[UUID, float] = {}
+    representatives: dict[UUID, ChannelHit] = {}
+    for hits in ranked_hits:
+        for hit in hits:
+            scores[hit.child_id] = scores.get(hit.child_id, 0.0) + 1.0 / (rank_constant + hit.rank)
+            previous = representatives.get(hit.child_id)
+            # raw_score 只在同一候选的多次命中之间取最大，绝不跨候选相加
+            if previous is None or (
+                hit.raw_score is not None
+                and (previous.raw_score is None or hit.raw_score > previous.raw_score)
+            ):
+                representatives[hit.child_id] = hit
+    ranked = sorted(
+        representatives.values(),
+        key=lambda hit: (-scores[hit.child_id], str(hit.child_id)),
+    )
+    return tuple(
+        ChannelHit(
+            child_id=hit.child_id,
+            parent_id=hit.parent_id,
+            document_version_id=hit.document_version_id,
+            rank=rank,
+            raw_score=hit.raw_score,
+        )
+        for rank, hit in enumerate(ranked, start=1)
+    )
+
+
 def order_by_rerank(
     candidates: Sequence[Candidate],
     scores: Mapping[UUID, float],
@@ -281,7 +315,7 @@ class RerankStatus(StrEnum):
     """正常完成重排打分"""
 
     DEGRADED = "degraded"
-    """重排不可用，降级使用 RRF 排序"""
+    """重排不可用，候选仅按 RRF 顺序保留在诊断中，不得据此生成"""
 
     SKIPPED = "skipped"
     """输入候选为空，跳过重排"""
@@ -304,7 +338,7 @@ class EvidenceStatus(StrEnum):
     """证据充分（至少一个候选块达到重排阈值且内容完整）"""
 
     DEGRADED = "degraded"
-    """重排降级，保留 RRF 召回候选"""
+    """重排不可用，证据质量无法核验：仅供诊断与展示，不得生成结论"""
 
     INSUFFICIENT = "insufficient"
     """证据不足，拒绝作答"""
@@ -323,21 +357,37 @@ class EvidenceDecision:
 
     @property
     def grounded(self) -> bool:
-        """是否具备足够的事实依据支撑回答"""
-        return self.status is not EvidenceStatus.INSUFFICIENT
+        """是否具备足够的事实依据支撑回答（只有 SUFFICIENT 才算核验通过）"""
+        return self.status is EvidenceStatus.SUFFICIENT
 
 
 def gate_evidence(
     candidates: Sequence[Candidate],
     *,
     min_rerank_score: float,
-    degraded: bool,
+    rerank: RerankReport,
 ) -> EvidenceDecision:
-    """判定检索召回块是否达到生成可信回答的证据门槛"""
+    """判定检索召回块是否达到生成可信回答的证据门槛
+
+    重排不可用时一律 fail-closed：没有经过核验的候选不得进入上下文，因为 Dense 余弦分与
+    BM25 分与重排阈值不同量纲，未经标定不得互相替代。
+    """
     if not candidates:
         return EvidenceDecision(
             status=EvidenceStatus.INSUFFICIENT,
             reason="no candidate survived retrieval",
+            accepted=(),
+        )
+    if rerank.status is RerankStatus.DEGRADED:
+        return EvidenceDecision(
+            status=EvidenceStatus.DEGRADED,
+            reason=rerank.reason or "rerank was unavailable; evidence cannot be verified",
+            accepted=(),
+        )
+    if rerank.status is not RerankStatus.OK:
+        return EvidenceDecision(
+            status=EvidenceStatus.INSUFFICIENT,
+            reason="rerank did not score the candidates",
             accepted=(),
         )
     with_content = [candidate for candidate in candidates if candidate.record.content.strip()]
@@ -346,12 +396,6 @@ def gate_evidence(
             status=EvidenceStatus.INSUFFICIENT,
             reason="no candidate carried the stored text a citation quotes",
             accepted=(),
-        )
-    if degraded:
-        return EvidenceDecision(
-            status=EvidenceStatus.DEGRADED,
-            reason="rerank was unavailable; the fused order was kept",
-            accepted=tuple(candidate.child_id for candidate in with_content),
         )
     scored = [
         candidate

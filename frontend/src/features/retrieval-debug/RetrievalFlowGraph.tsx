@@ -192,7 +192,7 @@ export function RetrievalFlowGraph({ report }: RetrievalFlowGraphProps): ReactNo
                     {isGateSufficient
                       ? "门控通过 (Sufficient)"
                       : isGateDegraded
-                        ? "证据降级 (Degraded)"
+                        ? "核验不可用 (Degraded · Abstained)"
                         : "依据门控弃答 (Abstained)"}
                   </span>
                 </div>

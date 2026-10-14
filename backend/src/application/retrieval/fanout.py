@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING
 import structlog
 
 from domain.retrieval import (
-    ChannelMatch,
+    ChannelHit,
     ChannelResult,
     ChannelStatus,
+    fuse_query_hits,
     rank_channel_matches,
 )
 
@@ -87,20 +88,19 @@ class ChannelFanOut:
         knowledge_base_id: UUID,
         queries: Sequence[str],
     ) -> ChannelResult:
-        """带超时保护执行单个检索渠道并对匹配项进行排序归并"""
+        """带超时保护执行单个检索渠道：每个查询独立排名后再做查询级 RRF 融合"""
         started = time.perf_counter()
         limit = self._budget.top_k_for(channel.channel)
-        matches: list[ChannelMatch] = []
+        ranked_per_query: list[tuple[ChannelHit, ...]] = []
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 for query in queries:
-                    matches.extend(
-                        await channel.search(
-                            knowledge_base_id=knowledge_base_id,
-                            query=query,
-                            limit=limit,
-                        )
+                    matches = await channel.search(
+                        knowledge_base_id=knowledge_base_id,
+                        query=query,
+                        limit=limit,
                     )
+                    ranked_per_query.append(rank_channel_matches(matches))
         except asyncio.CancelledError:
             raise
         except TimeoutError:
@@ -120,7 +120,7 @@ class ChannelFanOut:
                 error_type=type(error).__name__,
                 latency_ms=elapsed_ms(started),
             )
-        hits = rank_channel_matches(matches)
+        hits = fuse_query_hits(ranked_per_query, rank_constant=self._budget.rrf_rank_constant)
         return ChannelResult(
             channel=channel.channel,
             status=ChannelStatus.OK if hits else ChannelStatus.EMPTY,

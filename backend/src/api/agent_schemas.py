@@ -294,14 +294,13 @@ class RetrievalDebugResponse(BaseModel):
         result: RetrievalResult,
         *,
         query: str,
-        queries: list[str],
         intent: str,
     ) -> RetrievalDebugResponse:
         """从检索综合结果构建调试响应"""
         diagnostics = result.diagnostics
         return RetrievalDebugResponse(
             query=query,
-            queries=queries,
+            queries=list(diagnostics.queries),
             intent=intent,
             channels=[
                 RetrievalChannelResponse.from_result(channel) for channel in diagnostics.channels

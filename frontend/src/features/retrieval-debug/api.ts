@@ -235,7 +235,7 @@ export function channelStatusTone(status: string): MarkTone {
 
 export const EVIDENCE_STATUS_LABEL: Readonly<Record<string, string>> = {
   sufficient: "证据充足",
-  degraded: "证据降级",
+  degraded: "核验不可用（已弃答）",
   insufficient: "证据不足",
   unverified: "引用未验证",
 };
@@ -258,7 +258,7 @@ export function evidenceStatusTone(status: string): MarkTone {
 
 export const RERANK_STATUS_LABEL: Readonly<Record<string, string>> = {
   ok: "已重排",
-  degraded: "重排不可用，保留融合顺序",
+  degraded: "重排不可用，已弃答",
   skipped: "本次未重排",
 };
 

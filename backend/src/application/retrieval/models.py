@@ -12,8 +12,9 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class RetrievalDiagnostics:
-    """单轮检索各渠道、融合与重排诊断信息"""
+    """单轮检索实际执行的查询变体及各渠道、融合与重排诊断信息"""
 
+    queries: tuple[str, ...]
     channels: tuple[ChannelResult, ...]
     fused: tuple[Candidate, ...]
     reranked: tuple[Candidate, ...]

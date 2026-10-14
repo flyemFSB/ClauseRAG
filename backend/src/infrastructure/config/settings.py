@@ -228,7 +228,7 @@ class Settings(BaseSettings):
     agent_runtime_port: int = Field(default=8001, ge=1, le=65535)
     checkpoint_pool_size: int = Field(default=4, ge=1, le=32)
     answer_timeout_seconds: int = Field(default=300, gt=0, le=3600)
-    rerank_max_documents: int = Field(default=50, ge=1, le=200)
+    rerank_max_documents: int = Field(default=8, ge=1, le=200)
 
     # RAGAS 评测配置：只有评测依赖组（uv run --group eval）读取，业务进程不读。
     # 专用 judge 凭据缺失时回落到 SiliconFlow 的 OpenAI-compatible endpoint，

@@ -275,7 +275,8 @@ def create_conversations_router() -> APIRouter:
         async def rebuild() -> RetrievalDebugResponse:
             """回源执行检索并构建调试响应。"""
             classified = await understanding.understand(question=payload.query)
-            # 无改写查询时兜底使用原始问题执行检索
+            # 非检索意图下分类器不做改写；这个端点始终要跑一轮真实检索，所以和 agent 的 retrieve
+            # 节点用同一条兜底：没有改写就用原问题。去空、去重由检索服务统一完成。
             queries = classified.queries or (payload.query,)
             result = await retrieval.retrieve(
                 knowledge_base_id=payload.knowledge_base_id,
@@ -285,7 +286,6 @@ def create_conversations_router() -> APIRouter:
             return RetrievalDebugResponse.from_result(
                 result,
                 query=payload.query,
-                queries=list(queries),
                 intent=classified.intent.value,
             )
 

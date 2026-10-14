@@ -12,9 +12,10 @@ load_context（加载上下文）
      ├─ ask_clarification ─────► END（信息严重缺失主动反问）
      └─ plan_retrieval（规划检索）
           → retrieve（统一检索节点：并发双通道召回、RRF 融合、重排、证据门控与上下文组装）
-             ├─ sufficient / degraded ──► generate ──► validate_citations ──► END
+             ├─ sufficient ──► generate ──► validate_citations ──► END
              ├─ insufficient（未达 2 轮上限）──► rewrite_query ──► plan_retrieval
-             └─ insufficient（已达 2 轮上限）──► abstain_response ────────► END
+             ├─ degraded（重排不可用）──► abstain_response ────────► END
+             └─ insufficient（已达 2 轮上限）──► abstain_response ──► END
 ```
 
 ---
@@ -32,13 +33,24 @@ load_context（加载上下文）
 
 ## 应用层 RRF 融合与重排 (RRF & Rerank)
 
-### 1. 倒数排名融合 (Reciprocal Rank Fusion)
+### 1. 查询内倒数排名融合 (Query-level RRF)
+意图分析最多产生 2 个查询变体（`MAX_REWRITTEN_QUERIES`）。每个查询在同一渠道内**独立排名**，
+再按查询级 RRF 融合为该渠道的统一排名，最后才进入通道间融合：
+$$\text{RRF}_q(d) = \sum_{q \in Q} \frac{1}{60 + r_q(d)}$$
+两级倒排都不可省：把多个查询的召回直接拼接再统一排名，会让第二个查询的第一名落到第 $K+1$ 名，
+在后续通道间 RRF 中被错误降权。同一候选被多个查询命中会累加分数，因此查询级 RRF 同时表达
+"某个查询非常相关"与"多个查询都支持该候选"，而 `min(rank)` 会丢掉后一半信息。同一候选的
+`raw_score` 只在各查询之间取最大值，绝不跨候选相加，也不把缺失分数写作 0。
+查询变体在进入检索前先做轻量规范化：trim、丢弃空查询、保持顺序去重；全部为空时回退到原始问题，
+避免模型生成两个相同查询时重复打到供应商。
+
+### 2. 通道间倒数排名融合 (Channel-level RRF)
 消除不同索引原生分数的量纲差异（pgvector 为余弦相似度，pg_search 为 BM25 相关性分）：
 $$\text{RRF}(d) = \sum_{c \in \{\text{dense}, \text{keyword}\}} \frac{w_c}{60 + r_c(d)}$$
 默认权重均为 $1.0$，取融合排名前 50 条候选切片进入重排阶段。
 
-### 2. 交叉注意力二次重排 (Reranking)
-将候选切片输入 SiliconFlow `BAAI/bge-reranker-v2-m3` 模型，计算与用户问题的交叉注意力相似度得分 $\in [0, 1]$。若重排服务暂时不可用，系统显式标注降级（`degraded`）并沿用 RRF 融合顺序，绝不伪造重排分值。
+### 3. 交叉注意力二次重排 (Reranking)
+将候选切片输入 SiliconFlow `BAAI/bge-reranker-v2-m3` 模型，计算与用户问题的交叉注意力相似度得分 $\in [0, 1]$。若重排服务不可用（超时或 HTTP 错误），系统在诊断中显式标注降级（`degraded`）并保留 RRF 顺序**仅供诊断**：候选不进入上下文、不产生引用，该轮直接拒答（fail-closed）。Dense 余弦分与 BM25 分和重排阈值不同量纲，未经真实数据标定不得互相替代。
 
 ---
 
@@ -48,11 +60,12 @@ $$\text{RRF}(d) = \sum_{c \in \{\text{dense}, \text{keyword}\}} \frac{w_c}{60 + 
   - `dense_top_k` = 30
   - `keyword_top_k` = 30
   - `fusion_limit` = 50
-  - `rerank_limit` = 50
+  - `rerank_limit` = 50（送进重排的候选上限）
+  - `rerank_max_documents` = 8（重排 `top_n`：只取回分数最高的 8 条，其余候选拿不到重排分、不能进入证据集）
   - `final_parent_limit` = 8
   - `max_context_tokens` = 6000
 - **装配策略**：
-  - 先按重排分筛选 Top 子切片，再依据所属父切片进行分组聚合；
+  - 先把融合前 50 条送进交叉重排、只取回分数最高的 8 条，再依据所属父切片进行分组聚合；
   - 提示词注入的上下文正文采用 Parent 切片完整段落；
   - 预算计算严格覆盖最终渲染后的所有标识字符与段落文字；若首个子块无法放入剩余 Token 预算，则整组安全跳过，防止段落语义被半路截断。
 
@@ -61,10 +74,12 @@ $$\text{RRF}(d) = \sum_{c \in \{\text{dense}, \text{keyword}\}} \frac{w_c}{60 + 
 ## 证据门控标准 (Evidence Gating)
 
 召回不等于证据。只有通过质量判定的候选集合才能驱动生成：
-- **`sufficient`（充分）**：Top 1 重排得分达到阈值（默认 $\ge 0.2$）且具有充足的上下文覆盖，允许调用大模型生成答案。
-- **`degraded`（降级）**：部分通道网络异常，但剩余通道证据仍能支撑最小作答依据，带降级标记输出。
-- **`insufficient`（不足）**：所有候选得分均低于阈值或召回为空。耗尽重试预算后执行**主动弃答（Abstain）**，输出标准提示，坚决不臆测生成。
+- **`sufficient`（充分）**：至少一个候选内容完整且重排得分达到阈值（默认 $\ge 0.2$），允许调用大模型生成答案。
+- **`degraded`（降级）**：重排服务不可用，证据质量无法核验。该状态保留在诊断与 UI 中，但 `accepted` 恒为空：不组装上下文、不生成结论、不产生引用，直接弃答并提示「当前检索结果无法完成可靠的条款相关性核验，因此暂不生成审查结论。请稍后重试。」。重排故障 ≠ 知识库无内容，两者原因不同，不得共用同一句提示。
+- **`insufficient`（不足）**：所有候选得分均低于阈值或召回为空。未耗尽重试预算时允许一次查询改写；耗尽后执行**主动弃答（Abstain）**，输出标准提示，坚决不臆测生成。
 - **`unverified`（未核验）**：模型生成的答复未能提供任何可被服务端解析的合法引用，系统标记为未核验，杜绝混淆为权威回答（ADR-0032）。
+
+门控闭合规则 `EvidenceStatus.grounded` 只承认 `sufficient`：`degraded` 与 `unverified` 都不构成可生成结论的依据。路由上只有 `insufficient` 会触发查询改写，`degraded` 直接弃答，避免重排供应商故障时连续发出两轮完全相同的重排请求（ADR-0036）。
 
 ---
 

@@ -40,6 +40,12 @@ if TYPE_CHECKING:
 log = structlog.get_logger(__name__)
 
 
+def normalize_queries(queries: Sequence[str], *, fallback: str) -> tuple[str, ...]:
+    """去除空白查询、按顺序去重，全部为空时回退到原始问题"""
+    unique = tuple(dict.fromkeys(cleaned for query in queries if (cleaned := query.strip())))
+    return unique or (fallback,)
+
+
 class RetrievalService:
     """多路混合检索应用服务"""
 
@@ -57,7 +63,6 @@ class RetrievalService:
         rerank_max_documents: int,
         min_rerank_score: float,
         citation_quote_chars: int,
-        rerank_enabled: bool = True,
     ) -> None:
         self._channels = tuple(channels)
         self._chunks = chunks
@@ -69,7 +74,6 @@ class RetrievalService:
         self._rerank_max_documents = rerank_max_documents
         self._min_rerank_score = min_rerank_score
         self._citation_quote_chars = citation_quote_chars
-        self._rerank_enabled = rerank_enabled
         self._fan_out = ChannelFanOut(
             channels=channels,
             budget=budget,
@@ -94,7 +98,7 @@ class RetrievalService:
         rewritten_queries: Sequence[str] = (),
     ) -> RetrievalResult:
         """执行完整检索流水线并输出证据决策与上下文"""
-        queries = tuple(rewritten_queries) or (query,)
+        queries = normalize_queries(tuple(rewritten_queries) or (query,), fallback=query)
         started = time.perf_counter()
         channels = await self._run_channels(knowledge_base_id=knowledge_base_id, queries=queries)
         records = await self._hydrate(knowledge_base_id=knowledge_base_id, channels=channels)
@@ -121,6 +125,7 @@ class RetrievalService:
             context=render_context(sources),
             context_tokens=context_tokens,
             diagnostics=RetrievalDiagnostics(
+                queries=queries,
                 channels=channels,
                 fused=fused,
                 reranked=reranked,
@@ -192,13 +197,6 @@ class RetrievalService:
                 scored=0,
                 reason="no candidate to rerank",
             )
-        if not self._rerank_enabled:
-            return limited, RerankReport(
-                status=RerankStatus.DEGRADED,
-                model=self._reranker.model,
-                scored=0,
-                reason="rerank is disabled by configuration",
-            )
         documents = [candidate.record.content for candidate in limited]
         started = time.perf_counter()
         try:
@@ -245,11 +243,11 @@ class RetrievalService:
         candidates: Sequence[Candidate],
         rerank: RerankReport,
     ) -> EvidenceDecision:
-        """判定候选块是否通过证据门控阈值"""
+        """判定候选块是否通过证据门控阈值（重排不可用时 fail-closed）"""
         decision = gate_evidence(
             candidates,
             min_rerank_score=self._min_rerank_score,
-            degraded=rerank.status is not RerankStatus.OK,
+            rerank=rerank,
         )
         log.info(
             "证据门控判定完成",

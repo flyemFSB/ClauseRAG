@@ -277,7 +277,7 @@ export function Fused({
                       {(() => {
                         const rerankRank = rerankedOrder.get(candidate.childId);
                         if (rerankRank === undefined) {
-                          return <span className="text-ink-muted text-[11px]">未进入重排</span>;
+                          return <span className="text-ink-muted text-[11px]">未获重排分值</span>;
                         }
                         const delta = candidate.ordinal - rerankRank;
                         return (
@@ -373,7 +373,7 @@ export function Gate({ report }: { readonly report: RetrievalReport }): ReactNod
         ) : null}
         {status === "degraded" ? (
           <p className="max-w-[92ch] text-dense text-ink">
-            这次证据是降级的：有通道没有参与或未完整返回，结论基于降级候选给出。
+            这次重排服务不可用：候选未经条款相关性核验，无法判定证据质量，所以系统在对话中主动弃答，不生成审查结论。可选方案：稍后重试。
           </p>
         ) : null}
       </div>

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from domain.chat import ChatMessage, ChatRole
+from domain.retrieval import EvidenceStatus
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
@@ -20,6 +21,11 @@ log = structlog.get_logger(__name__)
 
 ABSTENTION_TEXT = (
     "合同知识库中没有足够的信息回答这个问题，请补充更具体的合同条款提问或上传相关协议文档。"
+)
+
+# 重排故障与证据不足是两回事：前者说明证据可能存在但质量核验服务不可用，不能谎称知识库没有内容
+DEGRADED_ABSTENTION_TEXT = (
+    "当前检索结果无法完成可靠的条款相关性核验，因此暂不生成审查结论。请稍后重试。"
 )
 
 EVIDENCE_OPEN = "<evidence>"
@@ -124,9 +130,9 @@ class AnswerService:
         )
 
     @staticmethod
-    def abstention() -> str:
-        """证据不足时的预设拒答文本"""
-        return ABSTENTION_TEXT
+    def abstention(status: EvidenceStatus = EvidenceStatus.INSUFFICIENT) -> str:
+        """证据不足或质量核验不可用时的预设拒答文本"""
+        return DEGRADED_ABSTENTION_TEXT if status is EvidenceStatus.DEGRADED else ABSTENTION_TEXT
 
     def _observe_prompt(
         self,

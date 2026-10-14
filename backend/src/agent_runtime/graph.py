@@ -129,9 +129,9 @@ async def ask_clarification(state: AgentState, runtime: Runtime[RunContext]) -> 
 
 
 async def abstain(state: AgentState, runtime: Runtime[RunContext]) -> dict[str, object]:
-    """知识库无匹配内容时的确定性拒答。"""
-    del state
-    return {"answer": runtime.context.answers.abstention()}
+    """无匹配内容或证据质量不可核验时的确定性拒答。"""
+    status = _record(state).evidence.status
+    return {"answer": runtime.context.answers.abstention(status)}
 
 
 async def validate_citations(
@@ -187,8 +187,12 @@ def route_after_route_query(state: AgentState) -> str:
 
 
 def route_after_retrieve(state: AgentState) -> str:
-    """评估检索证据：满足条件进入回答，未超上限则改写重试，否则拒答。"""
-    if _record(state).evidence.grounded:
+    """评估检索证据：核验不可用直接拒答，证据不足改写重试，核验通过则生成。"""
+    evidence = _record(state).evidence
+    # 重排故障不是证据不足：改写查询会重复打到同一个不可用的供应商，直接拒答
+    if evidence.status is EvidenceStatus.DEGRADED:
+        return "abstain"
+    if evidence.grounded:
         return "generate"
     if state["rounds"] < state["retrieval_scope"].budget.max_retrieval_rounds:
         return "rewrite_once"

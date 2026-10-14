@@ -640,9 +640,10 @@ Evidence: `backend/src/composition/api/app.py` (the business app and the middlew
 Status: accepted
 
 **The channel contract, and what a failure means.** A channel answers one query with the matches its own
-store ranked and with its own score; the engine assigns the ranks after merging the query variants of
-that channel, so a rank is a property of the channel's answer rather than of the query that produced
-it. A channel's outcome is one of four states and they are different facts: `ok` (it answered with
+store ranked and with its own score; each query variant is ranked on its own inside that channel, and
+the per-variant ranks are then fused by a query-level RRF into one channel ranking, so a rank is a
+property of the channel's answer rather than of the query that produced it. A channel's outcome is one
+of four states and they are different facts: `ok` (it answered with
 hits), `empty` (it answered with nothing), `failed` (it did not answer; `error_type` names the class)
 and `unavailable` (this deployment has no such channel). The three channels run concurrently under a
 per-channel timeout, and a channel that fails is recorded as failed while the others' results stand: a
@@ -658,27 +659,37 @@ the keyword channel both perform.
 
 **Fusion is application-level and recomputable.** `Σ weight_c / (60 + rank_c)` over the channels that
 returned a chunk, deduplicated by `document_version_id + child_id`, ordered by score and then by
-identifier. The numbers are configuration and the run reports them: `POST /api/v1/retrieval-debug/query`
+identifier, with each channel's rank itself a query-level RRF of that channel's query variants
+(ADR-0036). The numbers are configuration and the run reports them: `POST /api/v1/retrieval-debug/query`
 answers each channel's ranked hits, every candidate's `channel_ranks` and its `rrf_score`, the rerank
 scores, the gate's decision and the labelled context — so a fused score can be recomputed from the
 response that reports it. The retrieval probe does exactly that, to 1e-9. Per-request channel/rank
 scores are *not* stored: they are request-scoped observability, and the diagnostics read is where they
 are reported (``docs/architecture/data-flow.md``).
 
-**Rerank, and what happens when it cannot run.** At most the rerank budget's candidates are scored,
-`top_n` is bounded by the number of documents handed over, and an empty set is never sent (the provider
-refuses it: HTTP 400, code 20015 — measured). A provider that is unavailable does not fail the run: the
-configured fallback keeps the fused order and the run reports `degraded`, which the evidence gate reads
-as "grounded without rerank scores". A missing score is never written as zero, and a degraded run is
-never reported as a reranked one.
+**Rerank, and what happens when it cannot run.** At most `rerank_limit` candidates are handed over,
+the provider rescores them and returns its best `rerank_max_documents`, and a candidate it did not
+return keeps no score and therefore cannot become evidence; `top_n` is bounded by the number of
+documents handed over, and an empty set is never sent (the provider
+refuses it: HTTP 400, code 20015 — measured). A provider that is unavailable does not fail the run; the
+configured fallback keeps the fused order, and the run reports `degraded`. A missing score is never
+written as zero, and a degraded run is never reported as a reranked one.
+
+> **Revised by ADR-0036 (2026-10-13).** The fused order of a degraded run is kept for the diagnostics
+> only: the gate reads `degraded` as unverified, accepts no candidate, and the run abstains without
+> spending its rewrite round.
 
 **The gate.** `retrieved` is not `evidence`. A candidate is evidence when it exists, carries the stored
-text a citation quotes, and either reached the rerank threshold or was kept under the explicitly
-configured degraded mode. The threshold's default is a provisional floor, recorded as such: the
-retrieval contract defers its calibration to the final corpus, and until then the gate exists to keep an
+text a citation quotes, and reached the rerank threshold. The threshold's default is a provisional
+floor, recorded as such: the retrieval contract defers its calibration to the final corpus, and until
+then the gate exists to keep an
 unrelated question from being answered out of whatever the index happened to hold. An abstention is a
 constant of the platform, not a model call, so the one answer that must contain no general knowledge
 cannot acquire any.
+
+> **Revised by ADR-0036 (2026-10-13).** "Kept under the explicitly configured degraded mode" is
+> withdrawn: the rerank threshold is the only way a candidate becomes evidence, and `degraded` is not
+> a second kind of grounded.
 
 **Context and citations are child-scoped.** The accepted candidates are grouped by parent, each
 parent's children are ordered by the document's own ordinal, parents are taken in the order their best
@@ -1623,3 +1634,72 @@ deployment platform.
 Evidence: `backend/src/infrastructure/db/schema.py`; `backend/src/cli/commands/schema.py`;
 `docker-compose.yml` (the one-shot `schema-init` service every application service waits on);
 `backend/src/infrastructure/probes/postgres_probe.py`.
+
+## ADR-0036: A rank belongs to a query, and an unverified candidate is not evidence
+
+Status: accepted (revises the channel-rank and degraded-gate halves of ADR-0021)
+
+**Fusion runs twice, because a rank belongs to a query.** The classifier may hand over two query
+variants, and each channel answers each variant with its own top-k. Those answers are now ranked
+independently — `rank_channel_matches` assigns 1..k inside one variant's answer — and the variants are
+then fused by a query-level RRF, `Σ 1/(60 + rank_q)`, into the channel's single ranking, which is what
+the channel-level weighted RRF consumes. Concatenating the variants first, as the code did, made the
+second variant's first hit rank k+1 of a list nobody ranked: a document both variants agreed on was
+weighted as if only the weakest variant had found it, and the outer RRF demoted it accordingly. Summing
+the reciprocal ranks also keeps the support a `min(rank)` rule throws away — a document both queries
+found scores higher than one found by a single query at the same position, which is the evidence a
+second query was generated to find. `raw_score` is the maximum across a document's occurrences and is
+never summed; a missing score stays missing.
+
+**The query list is normalized before it becomes requests.** Trim, drop empties, dedupe preserving
+order, fall back to the original question when nothing survives (`normalize_queries`). With the rewrite
+model free to emit the same string twice, unnormalized input pays for the same provider call twice and
+inflates the query-level RRF of every document that call returned.
+
+**A candidate the reranker never scored is not evidence.** The earlier policy kept the fused order when
+rerank failed and let the gate read `degraded` as "grounded without rerank scores", so a provider
+outage silently turned whatever dense or BM25 happened to return into an answerable evidence set. That
+is withdrawn. `EvidenceDecision.grounded` is true only for `sufficient`, and `gate_evidence` takes the
+whole `RerankReport` instead of a boolean, because a non-`OK` report is not one fact: `degraded` means
+the provider was asked and did not answer, `skipped` means there was nothing to ask it about. Both
+yield `accepted=()`: no context is assembled, no citation can be produced, and the run abstains. The
+Boolean could not tell those apart, which is why it is gone rather than re-interpreted.
+
+**Why fail-closed, and what it costs.** The gate's floor is a rerank score in [0, 1] measured against
+the question. A dense cosine and a BM25 relevance score are different quantities on different scales,
+and no calibration exists that would let either stand in for that threshold — substituting one would
+move the gate's meaning without moving its number. The cost is availability: with the reranker down the
+platform answers nothing, including questions whose evidence was never in doubt. That is the deliberate
+direction for a product whose output is a legal conclusion, and it is the same direction the platform
+already took when it made an abstention a constant instead of a model call.
+
+**A degraded run abstains once, not twice, and says why.** Route selection reads the status rather than
+`grounded` alone: `degraded` goes straight to `abstain`, while `insufficient` keeps its single rewrite
+round. A provider outage is not a retrieval problem, and rewriting the question would spend another
+round trip against the same unavailable service. The abstention text distinguishes the two causes —
+"cannot verify relevance" from "the knowledge base does not cover this" — because reporting a
+verification outage as an empty knowledge base is a false statement about the corpus. The run keeps
+`degraded` in `retrieval.rerank.status`, `retrieval.evidence.status` and the terminal state, so the
+distinction survives into the diagnostics, the stored message row and the UI.
+
+**What verifies this, and what is still unmeasured.** The evidence is the container path and the
+diagnostics endpoint, not a test suite. A two-variant run over the hosted corpus reproduces each
+channel's ranking exactly when the query-level RRF is recomputed from those two variants run alone; a
+single-variant run keeps its previous order; the outer RRF still recomputes from the reported
+`channel_ranks` to zero delta; and a provider that refuses the model answers
+`rerank.status=degraded`, `evidence.status=degraded`, `accepted=0`, an empty context and one abstained
+round. The effect on retrieval *quality* is not measured: no Recall@K / MRR / nDCG comparison against
+the CUAD goldenset has been run, because the corpus is not in the repository and `cli evaluate`
+implements only its smoke mode. Until that comparison exists, the ranking rule is justified by
+construction and by the recomputation identity above, not by measured recall.
+
+**Reversal.** Re-deciding this needs a calibrated substitute for the rerank threshold: a dense or BM25
+cut-off measured against the final corpus and a labelled goldenset, reported as the gate that was
+actually obeyed. Dropping back to "keep the fused order" without that measurement restores the failure
+this ADR removes — an outage that produces confident answers with no verification behind them.
+
+Evidence: `backend/src/domain/retrieval.py` (`fuse_query_hits`, `gate_evidence`,
+`EvidenceDecision.grounded`); `backend/src/application/retrieval/service.py` (`normalize_queries`);
+`backend/src/application/retrieval/fanout.py` (`ChannelFanOut._run_channel`);
+`backend/src/agent_runtime/graph.py` (`route_after_retrieve`);
+`docs/architecture/retrieval-pipeline.md`.

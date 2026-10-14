@@ -32,7 +32,7 @@ const MODELS: readonly ConfigRow[] = [
     name: "重排模型",
     env: "RERANK_MODEL",
     detail:
-      "relevance_score 落在 [0,1]。服务不可用时保留融合顺序，并在结果里标注降级，而不是把缺的分值写成 0。",
+      "relevance_score 落在 [0,1]。服务不可用时本轮直接弃答（不生成结论），而不是把缺的分值写成 0。",
   },
 ];
 
@@ -49,9 +49,14 @@ const BUDGET: readonly ConfigRow[] = [
     detail: "RRF 之后进入重排之前的候选上限。",
   },
   {
-    name: "重排保留数",
+    name: "重排候选上限",
     env: "RERANK_LIMIT",
     detail: "一次重排调用最多带多少条候选；provider 没有文档化上限，这个数是本部署自己定的。",
+  },
+  {
+    name: "重排取用条数",
+    env: "RERANK_MAX_DOCUMENTS",
+    detail: "重排请求的 top_n：从候选里取回分数最高的这么多条，其余候选拿不到分数、不能成为证据。",
   },
   {
     name: "父块上限",

@@ -90,8 +90,9 @@
 - **路径**：`POST /retrieval-debug/query`
 - **请求体**：`{"knowledge_base_id": "...", "query": "违约赔偿责任限制"}`
 - **响应**：单轮真实检索评测报告，不落库、不调用大模型生成答案：
+  - `queries`：本轮实际执行的查询变体（已 trim、去空、按顺序去重；全部为空时回退到原问题）；
   - `channels`：Dense 与 Keyword 双通道各自召回候选、原始分值、延迟与通道健康状态（`ok`/`empty`/`failed`）；
   - `fused`：RRF 倒数排名融合得分及各通道排名快照；
   - `rerank`：BGE-Reranker-v2-m3 二次精排分数分布与打分耗时；
-  - `evidence`：证据门控裁决结果（`sufficient`/`degraded`/`insufficient`）；
+  - `evidence`：证据门控裁决结果（`sufficient`/`degraded`/`insufficient`）；`degraded` 表示重排不可用、证据质量无法核验，此时 `accepted` 恒为空且该轮直接弃答，不得当作可生成；
   - `context_sources`：组装输入提示词的切片列表、行号区间及真实原文。

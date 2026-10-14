@@ -103,10 +103,12 @@ export function StatusLine({ state }: { readonly state: RunState }): ReactNode {
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning-soft/40 px-3.5 py-2 text-label">
           <div className="flex items-center gap-2 text-warning-ink">
             <IconShieldAlert size={16} />
-            <span className="font-medium">证据部分降级 (Degraded Evidence)</span>
+            <span className="font-medium">
+              条款相关性核验不可用 · 已弃答 (Degraded · Abstained)
+            </span>
           </div>
           <div className="flex items-center gap-2 font-mono text-[11px] tabular-nums text-ink-secondary">
-            <span>{state.citations.length} 条可用引用 · 部分合同版本未覆盖</span>
+            <span>重排服务不可用 · 未生成审查结论</span>
           </div>
         </div>
       );
@@ -118,6 +120,18 @@ export function StatusLine({ state }: { readonly state: RunState }): ReactNode {
             <span className="font-medium text-ink">依据合规门控主动弃答 (Abstained)</span>
             <p className="text-dense text-ink-secondary">
               本次召回证据未达到合规决策门控阈值。平台严格执行防伪与免责协议，主动放弃生成推测性法律结论。
+            </p>
+          </div>
+        </div>
+      );
+    case "unverified":
+      return (
+        <div className="flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning-soft/40 p-3 text-label">
+          <IconShieldAlert size={16} className="text-warning-ink" />
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium text-warning-ink">回答未携带可核验引用 (Unverified)</span>
+            <p className="text-dense text-ink-secondary">
+              本次回答中的引用均未能通过服务端核验，平台不将其视为已溯源的审查结论，请以引用面板为准。
             </p>
           </div>
         </div>
