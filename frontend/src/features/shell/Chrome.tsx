@@ -67,7 +67,7 @@ export function Brand({ tagline = false }: { readonly tagline?: boolean }): Reac
         </span>
         {tagline ? (
           <span className="block truncate text-label text-ink-secondary">
-            美国商业合同审查与法务资产管理
+            商务合同审查与法务资产管理
           </span>
         ) : null}
       </span>

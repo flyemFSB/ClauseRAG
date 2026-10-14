@@ -25,7 +25,7 @@ ABSTENTION_TEXT = (
 EVIDENCE_OPEN = "<evidence>"
 EVIDENCE_CLOSE = "</evidence>"
 
-_GROUNDED_PROMPT = """你是 ClauseRAG 美国商业合同审查与法务知识库助手。请严格遵守以下规则：
+_GROUNDED_PROMPT = """你是 ClauseRAG 商务合同审查与法务知识库助手。请严格遵守以下规则：
 
 1. 只依据下面给出的“合同条款资料”回答，严谨客观，不得使用资料之外的内容，
    也不要凭空推断或揣测未约定的义务。

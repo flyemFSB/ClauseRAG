@@ -66,7 +66,7 @@ QUESTION_PATTERN = re.compile(
 )
 GOLDEN_ID_PATTERN = re.compile(r"^cuad-\d{6}$")
 
-#: 匹配脱敏或占位符文本（SEC 商业合同中常见的保密处理占位符）
+#: 匹配脱敏或占位符文本（商事合同中常见的保密处理占位符）
 REDACTION_PATTERN = re.compile(
     r"\*{2,}|(?<![A-Za-z0-9])_{2,}(?![A-Za-z0-9])|\[\s*\]|omitted", re.IGNORECASE
 )

@@ -21,7 +21,7 @@ export function ChatWelcome({ composer, notice }: ChatWelcomeProps): ReactNode {
             商事合同审查工作台
           </h1>
           <p className="mt-2 max-w-[56ch] text-body text-ink-secondary">
-            面向涉美商业协议（MSA / NDA / SOW / SaaS License）的条款级证据驱动审查
+            面向复杂商务协议（MSA / NDA / SOW / SaaS License 等）的条款级证据驱动审查
           </p>
         </div>
 
